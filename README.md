@@ -6,7 +6,7 @@ This initial `0.1.0` skeleton contains only the plugin lifecycle and development
 
 ## Development
 
-Requirements: an active Node.js LTS release (20, 22, or 24 and later) and npm.
+Requirements: Node.js 20.19+, 22.13+, or 24+ and npm.
 
 ```bash
 npm install
