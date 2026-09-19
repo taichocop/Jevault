@@ -1,0 +1,39 @@
+name: Notify Discord on CI failure
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  notify:
+    if: github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Send failure alert to Discord
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_DEV_ALERTS_WEBHOOK }}
+          REPOSITORY: ${{ github.repository }}
+          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+          BRANCH_NAME: ${{ github.event.workflow_run.head_branch }}
+          ACTOR_NAME: ${{ github.event.workflow_run.actor.login }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          jq -n \
+            --arg repository "$REPOSITORY" \
+            --arg workflow "$WORKFLOW_NAME" \
+            --arg branch "$BRANCH_NAME" \
+            --arg actor "$ACTOR_NAME" \
+            --arg url "$RUN_URL" \
+            '{
+              content: ("🔴 [" + $repository + "] " + $workflow + " failed\nBranch: " + $branch + "\nActor: " + $actor + "\n" + $url),
+              allowed_mentions: {parse: []}
+            }' |
+            curl --silent --show-error --fail-with-body \
+              --header 'Content-Type: application/json' \
+              --data-binary @- \
+              "$DISCORD_WEBHOOK_URL"
