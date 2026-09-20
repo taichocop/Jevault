@@ -41,6 +41,8 @@ export class JevaultSettingTab extends PluginSettingTab {
       .setDesc("Number of folder suggestions to show.")
       .addText((text) => {
         text.inputEl.type = "number";
+        text.inputEl.min = "1";
+        text.inputEl.step = "1";
         text.setValue(String(settings.suggestionCount)).onChange(async (value) => {
           const suggestionCount = parseSuggestionCount(value);
 

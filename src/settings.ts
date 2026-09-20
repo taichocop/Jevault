@@ -16,6 +16,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function isValidSuggestionCount(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0;
+}
+
 /** 保存済みデータを、欠けている設定をデフォルトで補完した現在の形式へ復元する。 */
 export function loadSettings(savedData: unknown): JevaultSettings {
   if (!isRecord(savedData)) {
@@ -35,11 +39,9 @@ export function loadSettings(savedData: unknown): JevaultSettings {
       typeof savedData.inboxPath === "string"
         ? savedData.inboxPath
         : DEFAULT_SETTINGS.inboxPath,
-    suggestionCount:
-      typeof savedData.suggestionCount === "number" &&
-      Number.isFinite(savedData.suggestionCount)
-        ? savedData.suggestionCount
-        : DEFAULT_SETTINGS.suggestionCount,
+    suggestionCount: isValidSuggestionCount(savedData.suggestionCount)
+      ? savedData.suggestionCount
+      : DEFAULT_SETTINGS.suggestionCount,
     ignoredFolders:
       Array.isArray(savedData.ignoredFolders) &&
       savedData.ignoredFolders.every(
@@ -56,7 +58,7 @@ export function parseSuggestionCount(value: string): number | undefined {
   }
 
   const suggestionCount = Number(value);
-  return Number.isFinite(suggestionCount) ? suggestionCount : undefined;
+  return isValidSuggestionCount(suggestionCount) ? suggestionCount : undefined;
 }
 
 export function parseIgnoredFolders(value: string): string[] {

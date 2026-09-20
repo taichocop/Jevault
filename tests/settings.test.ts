@@ -50,6 +50,19 @@ describe("Jevault settings", () => {
     ).toEqual(DEFAULT_SETTINGS);
   });
 
+  it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+    "falls back when the saved suggestion count is invalid: %s",
+    (suggestionCount) => {
+      expect(loadSettings({ suggestionCount }).suggestionCount).toBe(
+        DEFAULT_SETTINGS.suggestionCount,
+      );
+    },
+  );
+
+  it("keeps large positive integer suggestion counts", () => {
+    expect(loadSettings({ suggestionCount: 1000 }).suggestionCount).toBe(1000);
+  });
+
   it("does not share the default ignored folder array with loaded settings", () => {
     const settings = loadSettings(undefined);
 
@@ -65,9 +78,15 @@ describe("Jevault settings", () => {
     ]);
   });
 
-  it("accepts finite suggestion counts without adding a product maximum", () => {
+  it("accepts only positive integer suggestion counts without adding a maximum", () => {
+    expect(parseSuggestionCount("1")).toBe(1);
     expect(parseSuggestionCount("5")).toBe(5);
     expect(parseSuggestionCount("1000")).toBe(1000);
+    expect(parseSuggestionCount("0")).toBeUndefined();
+    expect(parseSuggestionCount("-1")).toBeUndefined();
+    expect(parseSuggestionCount("1.5")).toBeUndefined();
+    expect(parseSuggestionCount("NaN")).toBeUndefined();
+    expect(parseSuggestionCount("Infinity")).toBeUndefined();
     expect(parseSuggestionCount("")).toBeUndefined();
     expect(parseSuggestionCount("not-a-number")).toBeUndefined();
   });
