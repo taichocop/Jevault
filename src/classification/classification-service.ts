@@ -47,8 +47,8 @@ export class ClassificationService {
     }
 
     const apiKey = this.secretService.getApiKey(settings.apiKeySecretName);
-    if (apiKey === null) {
-      // 認証できない呼び出しを避け、API Keyをerrorやresultへ載せず状態だけを返す。
+    if (apiKey === null || apiKey.trim().length === 0) {
+      // blank値でも認証不能な通信へ進まないよう、credential自体は加工せず利用可否だけを判定する。
       return { status: "missing-secret" };
     }
 

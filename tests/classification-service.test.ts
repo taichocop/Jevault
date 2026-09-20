@@ -170,17 +170,18 @@ describe("ClassificationService", () => {
     });
   });
 
-  it("does not create or call a classifier when the secret is missing", async () => {
-    const { classify, classifierFactory, service } = createService({
-      apiKey: null,
-    });
+  it.each([null, "", " ", "   ", "\n", "\t", " \n\t "])(
+    "does not create or call a classifier for missing or blank secret %j",
+    async (apiKey) => {
+      const { classify, classifierFactory, service } = createService({ apiKey });
 
-    await expect(service.classifyActiveNote()).resolves.toEqual({
-      status: "missing-secret",
-    });
-    expect(classifierFactory).not.toHaveBeenCalled();
-    expect(classify).not.toHaveBeenCalled();
-  });
+      await expect(service.classifyActiveNote()).resolves.toEqual({
+        status: "missing-secret",
+      });
+      expect(classifierFactory).not.toHaveBeenCalled();
+      expect(classify).not.toHaveBeenCalled();
+    },
+  );
 
   it("does not resolve a secret or call a classifier when no candidates exist", async () => {
     const { classify, classifierFactory, getApiKey, service } = createService({
