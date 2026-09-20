@@ -9,11 +9,15 @@
     "dev": "node esbuild.config.mjs",
     "build": "npm run typecheck && node esbuild.config.mjs production",
     "test": "vitest run",
+    "spike:typesafe": "vitest run --config vitest.integration.config.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src tests"
   },
   "engines": {
     "node": "^20.19.0 || ^22.13.0 || >=24.0.0"
+  },
+  "dependencies": {
+    "@typesafe-ai/sdk": "0.6.0"
   },
   "devDependencies": {
     "@codemirror/state": "6.5.0",
