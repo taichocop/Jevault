@@ -1,0 +1,55 @@
+import type { TFile, Vault, Workspace } from "obsidian";
+
+export interface NoteState {
+  title: string;
+  path: string;
+  body: string;
+}
+
+export type NoteStateResult =
+  | { status: "no-active-file" }
+  | { status: "unsupported-file" }
+  | { status: "ready"; note: NoteState };
+
+type ActiveFileReader = Pick<Workspace, "getActiveFile">;
+type NoteBodyReader = Pick<Vault, "read">;
+
+/** Active Markdownの取得とNoteState生成だけを担う、read-onlyな境界。 */
+export class NoteService {
+  constructor(
+    private readonly workspace: ActiveFileReader,
+    private readonly vault: NoteBodyReader,
+  ) {}
+
+  async getActiveNoteState(): Promise<NoteStateResult> {
+    const activeFile = this.workspace.getActiveFile();
+
+    // 呼び出し元が未選択と非対応形式を別々に扱えるよう、本文取得前に状態を確定する。
+    if (activeFile === null) {
+      return { status: "no-active-file" };
+    }
+
+    if (!isMarkdown(activeFile)) {
+      // 画像やPDFの内容を分類用本文として誤読しないよう、Vault.readを呼び出さずに終了する。
+      return { status: "unsupported-file" };
+    }
+
+    // OS filesystemを介さずObsidianのread APIだけを使うため、ノートやVaultを変更しない。
+    const body = await this.vault.read(activeFile);
+
+    return {
+      status: "ready",
+      note: {
+        // basenameは親folderを含まず、Markdown拡張子も除かれたObsidianのファイル名である。
+        title: activeFile.basename,
+        // 分類元を一意に保てるよう、nested folderや日本語を含むVault相対pathをそのまま使う。
+        path: activeFile.path,
+        body,
+      },
+    };
+  }
+}
+
+function isMarkdown(file: TFile): boolean {
+  return file.extension.toLowerCase() === "md";
+}
