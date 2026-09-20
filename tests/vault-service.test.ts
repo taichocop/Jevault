@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TAbstractFile } from "obsidian";
 
+import { CandidateBuilder } from "../src/classification/candidate-builder";
+
 const { MockTFile, MockTFolder } = vi.hoisted(() => {
   class MockTFile {
     constructor(readonly path: string) {}
@@ -161,5 +163,41 @@ describe("VaultService", () => {
         ignoredFolders: [],
       }),
     ).toEqual([]);
+  });
+
+  it("feeds only available Vault paths into CandidateBuilder", () => {
+    const service = createService([
+      new MockTFolder("Inbox"),
+      new MockTFolder("Inbox/drafts"),
+      new MockTFolder("programming"),
+      new MockTFolder("programming/aws"),
+      new MockTFolder("programming/ruby"),
+      new MockTFolder("Templates"),
+      new MockTFolder("Attachments"),
+      new MockTFolder("health/fitness"),
+    ]);
+    const paths = service.getAvailableFolderPaths({
+      inboxPath: "Inbox",
+      ignoredFolders: ["Templates", "Attachments"],
+    });
+
+    expect(new CandidateBuilder().build(paths)).toEqual([
+      {
+        path: "programming",
+        description: "Existing vault folder: programming",
+      },
+      {
+        path: "programming/aws",
+        description: "Existing vault folder: programming/aws",
+      },
+      {
+        path: "programming/ruby",
+        description: "Existing vault folder: programming/ruby",
+      },
+      {
+        path: "health/fitness",
+        description: "Existing vault folder: health/fitness",
+      },
+    ]);
   });
 });
