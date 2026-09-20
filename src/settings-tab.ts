@@ -1,4 +1,10 @@
-import { App, Plugin, PluginSettingTab, Setting } from "obsidian";
+import {
+  App,
+  Plugin,
+  PluginSettingTab,
+  SecretComponent,
+  Setting,
+} from "obsidian";
 
 import {
   parseIgnoredFolders,
@@ -7,10 +13,13 @@ import {
 } from "./settings";
 
 type SettingsUpdate = Partial<
-  Pick<JevaultSettings, "inboxPath" | "suggestionCount" | "ignoredFolders">
+  Pick<
+    JevaultSettings,
+    "apiKeySecretName" | "inboxPath" | "suggestionCount" | "ignoredFolders"
+  >
 >;
 
-/** Jevault の非機密設定だけを編集する Obsidian Settings タブ。 */
+/** Jevault の設定を編集し、機密値は Obsidian SecretStorage に委ねる Settings タブ。 */
 export class JevaultSettingTab extends PluginSettingTab {
   constructor(
     app: App,
@@ -26,6 +35,17 @@ export class JevaultSettingTab extends PluginSettingTab {
     const settings = this.getSettings();
 
     containerEl.empty();
+
+    const apiKeySetting = new Setting(containerEl)
+      .setName("TypeSafe API key")
+      .setDesc("Select the Obsidian secret that contains your TypeSafe API key.");
+
+    // SecretComponent は値を露出せず、設定には SecretStorage 上の参照名だけを渡す。
+    new SecretComponent(this.app, apiKeySetting.controlEl)
+      .setValue(settings.apiKeySecretName)
+      .onChange(async (apiKeySecretName) => {
+        await this.updateSettings({ apiKeySecretName });
+      });
 
     new Setting(containerEl)
       .setName("Inbox folder")
