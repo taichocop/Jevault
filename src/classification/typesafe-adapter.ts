@@ -97,6 +97,13 @@ export function mapTypeSafeResponse(
     rawCandidates,
     candidates,
   );
+  if (
+    !validatedCandidates.some((candidate) => candidate.path === answer.choice)
+  ) {
+    throw new InvalidTypeSafeResponseError(
+      "TypeSafe destination answer selected a path without a probability.",
+    );
+  }
   const providerConfidence = validateOptionalProbability(
     answer.confidence,
     "provider confidence",
@@ -120,7 +127,7 @@ export function validateClassificationCandidates(
   const allowedPaths = new Set(candidates.map((candidate) => candidate.path));
   const observedPaths = new Set<string>();
 
-  return value.map((entry, index) => {
+  const validatedCandidates = value.map((entry, index) => {
     const candidate = asRecord(entry, `candidate ${index}`);
     if (typeof candidate.path !== "string" || !allowedPaths.has(candidate.path)) {
       throw new InvalidTypeSafeResponseError(
@@ -142,6 +149,15 @@ export function validateClassificationCandidates(
       ),
     };
   });
+
+  // 候補の欠落を許すと未評価のfolderを0扱いしてしまうため、集合の完全一致を要求する。
+  if (observedPaths.size !== allowedPaths.size) {
+    throw new InvalidTypeSafeResponseError(
+      "TypeSafe response must contain every requested candidate path exactly once.",
+    );
+  }
+
+  return validatedCandidates;
 }
 
 function assertValidInputPaths(candidates: readonly FolderCandidate[]): void {

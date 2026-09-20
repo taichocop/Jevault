@@ -2,7 +2,7 @@
 
 Jevault is an Obsidian desktop plugin that will suggest destination folders for Markdown notes using the existing structure of a vault.
 
-This initial `0.1.0` skeleton contains only the plugin lifecycle and development tooling. It does not scan or modify a vault, send network requests, collect telemetry, or require an API key.
+The production plugin remains suggestion-only and does not scan or modify a vault, send network requests, or collect telemetry. An explicit integration spike is available for testing the replaceable TypeSafe adapter.
 
 ## Development
 
@@ -17,6 +17,20 @@ npm run lint
 ```
 
 For local development, run `npm run dev` to rebuild `main.js` when source files change.
+
+### TypeSafe integration spike
+
+Create a local `.env.1password` containing only a 1Password Secret Reference, never a plaintext credential. The file is ignored by Git.
+
+```dotenv
+TYPESAFE_API_KEY=op://YOUR_VAULT/YOUR_ITEM/YOUR_FIELD
+```
+
+Run the explicit network integration test through 1Password CLI:
+
+```bash
+op run --env-file=.env.1password -- npm run spike:typesafe
+```
 
 ## Manual installation
 

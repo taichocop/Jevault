@@ -34,17 +34,19 @@ const candidates: FolderCandidate[] = [
 
 function response(
   probabilities: Record<string, unknown>,
-  ...confidenceValues: unknown[]
+  options: {
+    choice?: unknown;
+    confidence?: unknown;
+    omitConfidence?: boolean;
+  } = {},
 ): unknown {
-  const confidence =
-    confidenceValues.length === 0 ? 0.91 : confidenceValues[0];
   const destination: Record<string, unknown> = {
     type: "choice",
-    choice: "programming/aws",
+    choice: options.choice ?? "programming/aws",
     probabilities,
   };
-  if (confidence !== undefined) {
-    destination.confidence = confidence;
+  if (!options.omitConfidence) {
+    destination.confidence = options.confidence ?? 0.91;
   }
 
   return {
@@ -126,7 +128,7 @@ describe("classification spike", () => {
             "programming/ruby": 0.1,
             "health/fitness": 0.1,
           },
-          undefined,
+          { omitConfidence: true },
         ),
         candidates,
       ),
@@ -137,6 +139,69 @@ describe("classification spike", () => {
         { path: "health/fitness", probability: 0.1 },
       ],
     });
+  });
+
+  it("rejects a response missing one requested candidate", () => {
+    expect(() =>
+      mapTypeSafeResponse(
+        response({
+          "programming/aws": 0.9,
+          "programming/ruby": 0.1,
+        }),
+        candidates,
+      ),
+    ).toThrow(InvalidTypeSafeResponseError);
+  });
+
+  it("rejects a selected path missing from probabilities", () => {
+    expect(() =>
+      mapTypeSafeResponse(
+        response(
+          {
+            "programming/ruby": 0.6,
+            "health/fitness": 0.4,
+          },
+          { choice: "programming/aws" },
+        ),
+        candidates,
+      ),
+    ).toThrow(InvalidTypeSafeResponseError);
+  });
+
+  it("accepts the complete candidate set in a different order without requiring a sum of one", () => {
+    expect(
+      mapTypeSafeResponse(
+        response({
+          "health/fitness": 0.2,
+          "programming/aws": 0.8,
+          "programming/ruby": 0.3,
+        }),
+        candidates,
+      ),
+    ).toEqual({
+      candidates: [
+        { path: "health/fitness", probability: 0.2 },
+        { path: "programming/aws", probability: 0.8 },
+        { path: "programming/ruby", probability: 0.3 },
+      ],
+      providerConfidence: 0.91,
+    });
+  });
+
+  it("rejects invalid provider confidence", () => {
+    expect(() =>
+      mapTypeSafeResponse(
+        response(
+          {
+            "programming/aws": 0.9,
+            "programming/ruby": 0.06,
+            "health/fitness": 0.04,
+          },
+          { confidence: 1.01 },
+        ),
+        candidates,
+      ),
+    ).toThrow(InvalidTypeSafeResponseError);
   });
 
   it.each([

@@ -1,4 +1,7 @@
 /docs/
+.env
+.env.*
+!.env.example
 .idea/
 .DS_Store
 node_modules/
