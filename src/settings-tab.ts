@@ -36,6 +36,12 @@ export class JevaultSettingTab extends PluginSettingTab {
 
     containerEl.empty();
 
+    new Setting(containerEl)
+      .setName("Privacy and external services")
+      .setDesc(
+        "When you explicitly run “Jevault: Classify current note”, the active note title, Vault-relative path, full Markdown note body, and candidate folder paths are sent to TypeSafe. Jevault does not send note data in the background.",
+      );
+
     const apiKeySetting = new Setting(containerEl)
       .setName("TypeSafe API key")
       .setDesc("Select the Obsidian secret that contains your TypeSafe API key.");

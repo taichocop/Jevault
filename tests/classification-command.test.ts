@@ -13,10 +13,12 @@ const success: ClassificationServiceResult = {
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((resolvePromise) => {
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
     resolve = resolvePromise;
+    reject = rejectPromise;
   });
-  return { promise, resolve };
+  return { promise, reject, resolve };
 }
 
 function createCommand(
@@ -128,5 +130,58 @@ describe("ClassificationCommand", () => {
     expect(showSuggestions).not.toHaveBeenCalled();
     expect(handleFailure).not.toHaveBeenCalled();
     expect(hide).toHaveBeenCalledTimes(2);
+  });
+
+  it("hides every pending loading handle and ignores late success after dispose", async () => {
+    const requests = [
+      deferred<ClassificationServiceResult>(),
+      deferred<ClassificationServiceResult>(),
+    ];
+    const classifyActiveNote = vi
+      .fn<() => Promise<ClassificationServiceResult>>()
+      .mockImplementationOnce(() => requests[0]!.promise)
+      .mockImplementationOnce(() => requests[1]!.promise);
+    let activePath = "Inbox/First.md";
+    const { command, hide, showSuggestions } = createCommand(
+      classifyActiveNote,
+      () => activePath,
+    );
+
+    const first = command.execute();
+    activePath = "Inbox/Second.md";
+    const second = command.execute();
+    command.dispose();
+
+    expect(hide).toHaveBeenCalledTimes(2);
+    requests[0]!.resolve(success);
+    requests[1]!.resolve(success);
+    await Promise.all([first, second]);
+    expect(showSuggestions).not.toHaveBeenCalled();
+    expect(hide).toHaveBeenCalledTimes(2);
+  });
+
+  it("consumes a pending rejection without failure UI after dispose", async () => {
+    const pending = deferred<ClassificationServiceResult>();
+    const classifyActiveNote = vi.fn(() => pending.promise);
+    const { command, handleFailure, hide } = createCommand(classifyActiveNote);
+
+    const execution = command.execute();
+    command.dispose();
+    pending.reject(new Error("late network failure"));
+    await execution;
+
+    expect(handleFailure).not.toHaveBeenCalled();
+    expect(hide).toHaveBeenCalledOnce();
+  });
+
+  it("does not start classification after dispose", async () => {
+    const classifyActiveNote = vi.fn(async () => success);
+    const { command, showLoading } = createCommand(classifyActiveNote);
+
+    command.dispose();
+    await command.execute();
+
+    expect(classifyActiveNote).not.toHaveBeenCalled();
+    expect(showLoading).not.toHaveBeenCalled();
   });
 });

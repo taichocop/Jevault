@@ -19,6 +19,7 @@ export default class JevaultPlugin extends Plugin {
   secretService!: SecretService;
   vaultService!: VaultService;
   classificationService!: ClassificationService;
+  classificationCommand?: ClassificationCommand;
 
   async onload(): Promise<void> {
     this.settings = loadSettings(await this.loadData());
@@ -35,7 +36,7 @@ export default class JevaultPlugin extends Plugin {
       (apiKey) => new TypeSafeAdapter(apiKey),
       () => this.settings,
     );
-    const classificationCommand = new ClassificationCommand({
+    this.classificationCommand = new ClassificationCommand({
       classificationService: this.classificationService,
       getActiveNotePath: () => this.app.workspace.getActiveFile()?.path ?? null,
       showLoading: () => {
@@ -56,7 +57,7 @@ export default class JevaultPlugin extends Plugin {
       // Obsidianがplugin名を付与し、Paletteでは「Jevault: Classify current note」と表示する。
       name: "Classify current note",
       callback: () => {
-        void classificationCommand.execute();
+        void this.classificationCommand?.execute();
       },
     });
     const saveQueue = new SettingsSaveQueue(
@@ -77,5 +78,8 @@ export default class JevaultPlugin extends Plugin {
     );
   }
 
-  onunload(): void {}
+  onunload(): void {
+    this.classificationCommand?.dispose();
+    this.classificationCommand = undefined;
+  }
 }

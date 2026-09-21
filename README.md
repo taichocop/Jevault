@@ -2,7 +2,15 @@
 
 Jevault is an Obsidian desktop plugin that will suggest destination folders for Markdown notes using the existing structure of a vault.
 
-The production plugin remains suggestion-only and does not scan or modify a vault, send network requests, or collect telemetry. An explicit integration spike is available for testing the replaceable TypeSafe adapter.
+Jevault v0.1 is suggestion-only and read-only. It reads folder paths locally and does not move, rename, modify, or delete notes or folders.
+
+## Privacy and external services
+
+Jevault uses the TypeSafe API to classify notes. A TypeSafe account and API key are required.
+
+When you explicitly run `Jevault: Classify current note`, Jevault sends the active note title, Vault-relative note path, full Markdown note body, and candidate folder paths to TypeSafe. Plugin load, Settings display, and Suggestion UI display do not send note data.
+
+Jevault does not operate its own backend, does not collect telemetry or analytics, and does not perform classification or network requests in the background.
 
 ## Development
 
