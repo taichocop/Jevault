@@ -3,7 +3,7 @@ import type { ClassificationResult } from "./classification-result";
 import type { Classifier } from "./classifier";
 import type { FolderCandidate } from "./folder-candidate";
 
-/** Spike用の最小coordinator。完全なClassificationServiceは後続Issueで実装する。 */
+/** providerが返した候補をapplication側の表示順に整える。 */
 export async function classifyAndSort(
   classifier: Classifier,
   note: NoteState,
