@@ -50,8 +50,13 @@ export default class JevaultPlugin extends Plugin {
           createSuggestionViewModel(noteTitle, result),
         ).open();
       },
-      showError: (presentation, retry) => {
-        new ClassificationErrorModal(this.app, presentation, retry).open();
+      showError: (presentation, retry, ownerSignal) => {
+        new ClassificationErrorModal(
+          this.app,
+          presentation,
+          retry,
+          ownerSignal,
+        ).open();
       },
     });
     this.addCommand({

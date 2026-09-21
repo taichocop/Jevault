@@ -12,6 +12,7 @@ import type {
   ClassificationResult,
 } from "./classification-result";
 import type { Classifier } from "./classifier";
+import { throwIfCancelled } from "./classification-cancellation";
 import {
   InvalidTypeSafeResponseError,
   NetworkError,
@@ -22,10 +23,14 @@ import type { FolderCandidate } from "./folder-candidate";
 export { TYPE_SAFE_SDK_VERSION };
 
 const DESTINATION_QUESTION = "destination";
+const TYPE_SAFE_BASE_URL = "https://api.typesafe.ai";
 const DESTINATION_INSTRUCTIONS =
   "Which existing vault folder is the most appropriate destination for this note?";
 
-type SystemOneExecutor = (request: SystemOneRequest) => Promise<unknown>;
+type SystemOneExecutor = (
+  request: SystemOneRequest,
+  signal?: AbortSignal,
+) => Promise<unknown>;
 type ProviderFailureKind = "network" | "api";
 type ProviderFailureClassifier = (error: unknown) => ProviderFailureKind;
 
@@ -51,31 +56,50 @@ export class TypeSafeAdapter implements Classifier {
     }
 
     // SecretStorage等をadapterから探索せず、呼び出し元が注入した値だけを利用する。
-    const client = new TypeSafeClient({ apiKey, logLevel: "off" });
-    this.execute = async (request) => client.systemOne(request);
+    const client = new TypeSafeClient({
+      apiKey,
+      // 環境変数による送信先変更を避け、公式endpointだけへ送信する。
+      baseURL: TYPE_SAFE_BASE_URL,
+      // Obsidian rendererでは利用者自身の注入済みkeyを使うため、browser guardを明示的に許可する。
+      dangerouslyAllowBrowser: true,
+      // 再送は利用者のRetry操作だけに限定し、SDKの自動通信を止める。
+      retry: { maxRetries: 0 },
+      logLevel: "off",
+      // 公式endpointからのredirectでも、note本文を別の送信先へ転送しない。
+      fetch: (input, init) =>
+        globalThis.fetch(input, { ...init, redirect: "error" }),
+    });
+    this.execute = async (request, signal) =>
+      client.systemOne(request, { signal });
   }
 
   async classify(
     note: NoteState,
     candidates: FolderCandidate[],
+    signal?: AbortSignal,
   ): Promise<ClassificationResult> {
+    throwIfCancelled(signal);
     assertValidInputPaths(candidates);
     const criteria = Object.fromEntries(
       candidates.map((candidate) => [candidate.path, candidate.description]),
     );
     let response: unknown;
     try {
-      response = await this.execute({
-        state: {
-          title: note.title,
-          path: note.path,
-          body: note.body,
+      response = await this.execute(
+        {
+          state: {
+            title: note.title,
+            path: note.path,
+            body: note.body,
+          },
+          questions: {
+            [DESTINATION_QUESTION]: choice(DESTINATION_INSTRUCTIONS, criteria),
+          },
         },
-        questions: {
-          [DESTINATION_QUESTION]: choice(DESTINATION_INSTRUCTIONS, criteria),
-        },
-      });
+        signal,
+      );
     } catch (error: unknown) {
+      throwIfCancelled(signal);
       // SDKの詳細やresponse bodyをdomain/UIへ渡さず、通信失敗だけを区別する。
       if (this.classifyProviderFailure(error) === "network") {
         throw new NetworkError();
@@ -83,6 +107,7 @@ export class TypeSafeAdapter implements Classifier {
       throw new TypeSafeApiError();
     }
 
+    throwIfCancelled(signal);
     return mapTypeSafeResponse(response, candidates);
   }
 }

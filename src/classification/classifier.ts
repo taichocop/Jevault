@@ -7,5 +7,6 @@ export interface Classifier {
   classify(
     note: NoteState,
     candidates: FolderCandidate[],
+    signal?: AbortSignal,
   ): Promise<ClassificationResult>;
 }

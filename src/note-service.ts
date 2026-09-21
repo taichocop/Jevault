@@ -1,5 +1,7 @@
 import type { TFile, Vault, Workspace } from "obsidian";
 
+import { throwIfCancelled } from "./classification/classification-cancellation";
+
 export interface NoteState {
   title: string;
   path: string;
@@ -21,7 +23,8 @@ export class NoteService {
     private readonly vault: NoteBodyReader,
   ) {}
 
-  async getActiveNoteState(): Promise<NoteStateResult> {
+  async getActiveNoteState(signal?: AbortSignal): Promise<NoteStateResult> {
+    throwIfCancelled(signal);
     const activeFile = this.workspace.getActiveFile();
 
     // 呼び出し元が未選択と非対応形式を別々に扱えるよう、本文取得前に状態を確定する。
@@ -35,7 +38,9 @@ export class NoteService {
     }
 
     // OS filesystemを介さずObsidianのread APIだけを使うため、ノートやVaultを変更しない。
+    throwIfCancelled(signal);
     const body = await this.vault.read(activeFile);
+    throwIfCancelled(signal);
 
     return {
       status: "ready",

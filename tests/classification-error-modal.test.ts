@@ -52,14 +52,22 @@ vi.mock("obsidian", () => {
   return { App: class {}, Modal };
 });
 
-import { ClassificationErrorModal } from "../src/suggestion/classification-error-modal";
+import {
+  ClassificationErrorModal,
+  type RetryResult,
+} from "../src/suggestion/classification-error-modal";
+import { ClassificationCommand } from "../src/suggestion/classification-command";
+import { NetworkError } from "../src/classification/classification-errors";
+import type { ClassificationServiceResult } from "../src/classification/classification-service";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((resolvePromise) => {
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
     resolve = resolvePromise;
+    reject = rejectPromise;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 function button(modal: ClassificationErrorModal, text: string): FakeElement {
@@ -111,5 +119,181 @@ describe("ClassificationErrorModal", () => {
     );
     expect(contentEl.children.map((child) => child.text)).not.toContain("Retry");
     expect(contentEl.children.map((child) => child.text)).toContain("Close");
+  });
+});
+
+const successfulClassification: ClassificationServiceResult = {
+  status: "success",
+  noteTitle: "Synthetic fixture",
+  result: { candidates: [{ path: "Fixtures", probability: 0.9 }] },
+};
+
+function createIntegratedCommand() {
+  const pending = deferred<ClassificationServiceResult>();
+  const classifyActiveNote = vi
+    .fn<(signal?: AbortSignal) => Promise<ClassificationServiceResult>>()
+    .mockRejectedValueOnce(new NetworkError())
+    .mockImplementation(() => pending.promise);
+  const hide = vi.fn();
+  const showSuggestions = vi.fn();
+  let modal!: ClassificationErrorModal;
+  const showError = vi.fn<(
+    presentation: { message: string; retryable: boolean },
+    retry: ((signal?: AbortSignal) => Promise<RetryResult>) | undefined,
+    ownerSignal: AbortSignal,
+  ) => void>((presentation, retry, ownerSignal) => {
+    modal = new ClassificationErrorModal({} as App, presentation, retry, ownerSignal);
+    modal.open();
+  });
+  const command = new ClassificationCommand({
+    classificationService: { classifyActiveNote },
+    getActiveNotePath: () => "Fixtures/Synthetic.md",
+    showLoading: () => ({ hide }),
+    showSuggestions,
+    showError,
+  });
+  return {
+    command, classifyActiveNote, hide, pending, showSuggestions, showError,
+    getModal: () => modal,
+  };
+}
+
+async function flushCompletion(): Promise<void> {
+  for (let i = 0; i < 6; i += 1) {
+    await Promise.resolve();
+  }
+}
+
+describe("ClassificationCommand and ClassificationErrorModal lifecycle", () => {
+  it.each(["close", "unload"] as const)(
+    "aborts Retry on %s and suppresses a late success and finally redraw",
+    async (action) => {
+      const { command, classifyActiveNote, pending, showSuggestions, showError, hide, getModal } =
+        createIntegratedCommand();
+      await command.execute();
+      const modal = getModal();
+      const retryButton = button(modal, "Retry");
+      retryButton.click();
+      retryButton.click();
+      expect(classifyActiveNote).toHaveBeenCalledTimes(2);
+      const signal = classifyActiveNote.mock.calls[1]![0]!;
+      expect(signal.aborted).toBe(false);
+
+      if (action === "close") {
+        button(modal, "Close").click();
+      } else {
+        command.dispose();
+      }
+      expect(signal.aborted).toBe(true);
+      expect(hide).toHaveBeenCalledTimes(2);
+      const empty = vi.spyOn(modal.contentEl, "empty");
+      const createEl = vi.spyOn(modal.contentEl, "createEl");
+      pending.resolve(successfulClassification);
+      await flushCompletion();
+
+      expect(showSuggestions).not.toHaveBeenCalled();
+      expect(showError).toHaveBeenCalledOnce();
+      expect(empty).not.toHaveBeenCalled();
+      expect(createEl).not.toHaveBeenCalled();
+      expect(hide).toHaveBeenCalledTimes(2);
+      expect((modal.contentEl as unknown as FakeElement).children).toEqual([]);
+    },
+  );
+
+  it.each(["close", "unload"] as const)(
+    "consumes a late Retry rejection after %s without error or finally redraw",
+    async (action) => {
+      const { command, classifyActiveNote, pending, showSuggestions, showError, getModal } =
+        createIntegratedCommand();
+      await command.execute();
+      const modal = getModal();
+      button(modal, "Retry").click();
+      if (action === "close") {
+        modal.close();
+      } else {
+        command.dispose();
+      }
+      expect(classifyActiveNote.mock.calls[1]![0]!.aborted).toBe(true);
+      const empty = vi.spyOn(modal.contentEl, "empty");
+      const createEl = vi.spyOn(modal.contentEl, "createEl");
+      pending.reject(new NetworkError());
+      await flushCompletion();
+
+      expect(showSuggestions).not.toHaveBeenCalled();
+      expect(showError).toHaveBeenCalledOnce();
+      expect(empty).not.toHaveBeenCalled();
+      expect(createEl).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["resolve", "reject"] as const)(
+    "keeps a reopened Modal's Retry locked when the replaced operation completes by %s",
+    async (completion) => {
+      const { command, classifyActiveNote, pending, showSuggestions, getModal } =
+        createIntegratedCommand();
+      const replacement = deferred<ClassificationServiceResult>();
+      await command.execute();
+      const modal = getModal();
+      button(modal, "Retry").click();
+      const oldSignal = classifyActiveNote.mock.calls[1]![0]!;
+      modal.close();
+      modal.open();
+      classifyActiveNote.mockImplementationOnce(() => replacement.promise);
+      const currentButton = button(modal, "Retry");
+      currentButton.click();
+      expect(oldSignal.aborted).toBe(true);
+      expect(classifyActiveNote).toHaveBeenCalledTimes(3);
+      const currentSignal = classifyActiveNote.mock.calls[2]![0]!;
+      expect(currentSignal.aborted).toBe(false);
+      const empty = vi.spyOn(modal.contentEl, "empty");
+
+      if (completion === "resolve") {
+        pending.resolve(successfulClassification);
+      } else {
+        pending.reject(new NetworkError());
+      }
+      await flushCompletion();
+      expect(empty).not.toHaveBeenCalled();
+      expect(currentButton.disabled).toBe(true);
+      expect(showSuggestions).not.toHaveBeenCalled();
+      currentButton.click();
+      await command.execute();
+      expect(classifyActiveNote).toHaveBeenCalledTimes(3);
+      expect(currentSignal.aborted).toBe(false);
+
+      replacement.resolve(successfulClassification);
+      await flushCompletion();
+      expect(showSuggestions).toHaveBeenCalledOnce();
+      expect((modal.contentEl as unknown as FakeElement).children).toEqual([]);
+    },
+  );
+
+  it("invalidates an existing Retry when onOpen replaces its UI generation", async () => {
+    const { command, classifyActiveNote, pending, getModal } = createIntegratedCommand();
+    await command.execute();
+    const modal = getModal();
+    button(modal, "Retry").click();
+    const oldSignal = classifyActiveNote.mock.calls[1]![0]!;
+    modal.onOpen();
+    expect(oldSignal.aborted).toBe(true);
+    const empty = vi.spyOn(modal.contentEl, "empty");
+    pending.reject(new NetworkError());
+    await flushCompletion();
+    expect(empty).not.toHaveBeenCalled();
+    expect(button(modal, "Retry").disabled).toBe(false);
+    command.dispose();
+  });
+
+  it("does not reopen UI or start a Retry after command unload", async () => {
+    const { command, classifyActiveNote, getModal } = createIntegratedCommand();
+    await command.execute();
+    const modal = getModal();
+    const staleButton = button(modal, "Retry");
+    command.dispose();
+    modal.open();
+    staleButton.click();
+    await flushCompletion();
+    expect(classifyActiveNote).toHaveBeenCalledOnce();
+    expect((modal.contentEl as unknown as FakeElement).children).toEqual([]);
   });
 });

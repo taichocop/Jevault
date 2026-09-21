@@ -27,7 +27,7 @@ function deferred<T>() {
 }
 
 function createCommand(
-  classifyActiveNote: () => Promise<ClassificationServiceResult>,
+  classifyActiveNote: (signal?: AbortSignal) => Promise<ClassificationServiceResult>,
   getActiveNotePath: () => string | null = () => "Inbox/IAM Role.md",
 ) {
   const hide = vi.fn();
@@ -53,6 +53,7 @@ describe("ClassificationCommand", () => {
     await command.execute();
 
     expect(classifyActiveNote).toHaveBeenCalledTimes(1);
+    expect(classifyActiveNote).toHaveBeenCalledWith(expect.any(AbortSignal));
     expect(showSuggestions).toHaveBeenCalledWith("IAM Role", success.result);
     expect(hide).toHaveBeenCalledOnce();
   });
@@ -123,6 +124,7 @@ describe("ClassificationCommand", () => {
         retryable: true,
       },
       expect.any(Function),
+      expect.any(AbortSignal),
     );
     expect(showSuggestions).toHaveBeenCalledOnce();
     expect(hide).toHaveBeenCalledTimes(2);
@@ -185,6 +187,7 @@ describe("ClassificationCommand", () => {
         retryable: false,
       },
       undefined,
+      expect.any(AbortSignal),
     );
   });
 
@@ -239,5 +242,44 @@ describe("ClassificationCommand", () => {
 
     expect(classifyActiveNote).not.toHaveBeenCalled();
     expect(showLoading).not.toHaveBeenCalled();
+  });
+});
+
+describe("ClassificationCommand cancellation", () => {
+  it("passes abort to all pending service calls on dispose", async () => {
+    const pending = deferred<ClassificationServiceResult>();
+    const classifyActiveNote = vi.fn<
+      (signal?: AbortSignal) => Promise<ClassificationServiceResult>
+    >(() => pending.promise);
+    let activePath = "Inbox/First.md";
+    const { command, hide } = createCommand(classifyActiveNote, () => activePath);
+
+    const first = command.execute();
+    activePath = "Inbox/Second.md";
+    const second = command.execute();
+    const signals = classifyActiveNote.mock.calls.map(([signal]) => signal!);
+    expect(signals.every((signal) => !signal.aborted)).toBe(true);
+
+    command.dispose();
+    expect(signals.every((signal) => signal.aborted)).toBe(true);
+    expect(hide).toHaveBeenCalledTimes(2);
+    pending.resolve(success);
+    await Promise.all([first, second]);
+  });
+
+  it("does not start a Retry with an already aborted owner signal", async () => {
+    const classifyActiveNote = vi.fn(async () => {
+      throw new NetworkError();
+    });
+    const { command, showError, showLoading } = createCommand(classifyActiveNote);
+    await command.execute();
+    const retry = showError.mock.calls[0]?.[1] as
+      (signal: AbortSignal) => Promise<unknown>;
+    const owner = new AbortController();
+    owner.abort();
+
+    await expect(retry(owner.signal)).resolves.toEqual({ status: "ignored" });
+    expect(classifyActiveNote).toHaveBeenCalledOnce();
+    expect(showLoading).toHaveBeenCalledOnce();
   });
 });
