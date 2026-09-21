@@ -55,7 +55,7 @@ export default class JevaultPlugin extends Plugin {
       },
     });
     this.addCommand({
-      id: "jevault-classify-current-note",
+      id: "classify-current-note",
       // Obsidianがplugin名を付与し、Paletteでは「Jevault: Classify current note」と表示する。
       name: "Classify current note",
       callback: () => {
