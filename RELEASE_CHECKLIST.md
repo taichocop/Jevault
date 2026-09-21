@@ -16,9 +16,11 @@ Complete this checklist from a clean checkout and use only a dedicated, isolated
 - [ ] `versions.json` maps the current plugin version to the intended minimum Obsidian version.
 - [ ] The manifest description is 250 characters or fewer, uses correct capitalization, and ends with a period.
 - [ ] `README.md` has been reviewed as end-user documentation.
-- [ ] `LICENSE` exists and contains the license selected by the project owner.
+- [ ] `LICENSE` exists and contains the project-owner-selected MIT License.
 - [ ] `PRIVACY.md` has been reviewed.
-- [ ] `SECURITY.md` has been reviewed, including the private vulnerability-reporting channel.
+- [ ] `SECURITY.md` has been reviewed.
+- [ ] GitHub Private Vulnerability Reporting is enabled after the repository becomes public and before Community Plugin submission.
+- [ ] The repository's **Security → Report a vulnerability** flow is visible after Private Vulnerability Reporting is enabled.
 - [ ] The TypeSafe data disclosure lists the note title, Vault-relative note path, full Markdown note body, and candidate folder paths.
 - [ ] The TypeSafe account and bring-your-own API key requirements are disclosed.
 
