@@ -24,4 +24,14 @@ describe("plugin skeleton", () => {
     });
     expect(versions).toEqual({ "0.1.0": "1.11.4" });
   });
+
+  it("uses a submission-compliant plugin-local command ID", async () => {
+    const mainSource = await readFile(
+      new URL("../src/main.ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(mainSource).toContain('id: "classify-current-note"');
+    expect(mainSource).not.toContain('id: "jevault-classify-current-note"');
+  });
 });
