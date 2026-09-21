@@ -3,6 +3,11 @@ import type {
   ClassificationServiceResult,
 } from "../classification/classification-service";
 import type { ClassificationResult } from "../classification/classification-result";
+import type { RetryResult } from "./classification-error-modal";
+import {
+  createErrorPresentation,
+  type ErrorPresentation,
+} from "./error-presentation";
 
 type ClassificationRunner = Pick<ClassificationService, "classifyActiveNote">;
 
@@ -15,7 +20,10 @@ interface ClassificationCommandDependencies {
   getActiveNotePath: () => string | null;
   showLoading: () => LoadingHandle;
   showSuggestions: (noteTitle: string, result: ClassificationResult) => void;
-  handleFailure: () => void;
+  showError: (
+    presentation: ErrorPresentation,
+    retry: (() => Promise<RetryResult>) | undefined,
+  ) => void;
 }
 
 const NO_ACTIVE_NOTE_KEY = Symbol("no-active-note");
@@ -29,8 +37,20 @@ export class ClassificationCommand {
   constructor(private readonly dependencies: ClassificationCommandDependencies) {}
 
   async execute(): Promise<void> {
-    if (this.disposed) {
+    const result = await this.run();
+    if (result.status !== "failure" || this.disposed) {
       return;
+    }
+
+    this.dependencies.showError(
+      result.presentation,
+      result.presentation.retryable ? () => this.run() : undefined,
+    );
+  }
+
+  private async run(): Promise<RetryResult> {
+    if (this.disposed) {
+      return { status: "ignored" };
     }
 
     const requestKey =
@@ -38,7 +58,7 @@ export class ClassificationCommand {
 
     // 同じノートへの連打で外部requestを増やさず、別ノートの明示実行は妨げない。
     if (this.inFlight.has(requestKey)) {
-      return;
+      return { status: "ignored" };
     }
 
     this.inFlight.add(requestKey);
@@ -49,14 +69,14 @@ export class ClassificationCommand {
       // Vault走査やSecret解決をUIへ複製せず、分類の唯一の入口を利用する。
       const outcome = await this.dependencies.classificationService.classifyActiveNote();
       if (this.disposed) {
-        return;
+        return { status: "ignored" };
       }
       this.showSuccessfulOutcome(outcome);
-    } catch {
-      // エラー別UXは次Issueへ残し、このIssueでは未処理rejectionだけを防ぐ。
-      if (!this.disposed) {
-        this.dependencies.handleFailure();
-      }
+      return { status: "success" };
+    } catch (error) {
+      return this.disposed
+        ? { status: "ignored" }
+        : { status: "failure", presentation: createErrorPresentation(error) };
     } finally {
       // 成功・failure・throwの全経路でloadingとlockを残さず、再実行を可能にする。
       this.inFlight.delete(requestKey);

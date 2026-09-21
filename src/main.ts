@@ -9,6 +9,7 @@ import { loadSettings, type JevaultSettings } from "./settings";
 import { SettingsSaveQueue } from "./settings-save-queue";
 import { JevaultSettingTab } from "./settings-tab";
 import { ClassificationCommand } from "./suggestion/classification-command";
+import { ClassificationErrorModal } from "./suggestion/classification-error-modal";
 import { SuggestionModal } from "./suggestion/suggestion-modal";
 import { createSuggestionViewModel } from "./suggestion/suggestion-view-model";
 import { VaultService } from "./vault-service";
@@ -49,8 +50,9 @@ export default class JevaultPlugin extends Plugin {
           createSuggestionViewModel(noteTitle, result),
         ).open();
       },
-      // 詳細なerror taxonomyとユーザー向け文言は次Issueで統一する。
-      handleFailure: () => console.error("Jevault classification failed."),
+      showError: (presentation, retry) => {
+        new ClassificationErrorModal(this.app, presentation, retry).open();
+      },
     });
     this.addCommand({
       id: "jevault-classify-current-note",

@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
+import { APIConnectionError, APIError } from "@typesafe-ai/sdk";
 
 import { classifyAndSort } from "../src/classification/classify-and-sort";
 import type { Classifier } from "../src/classification/classifier";
+import {
+  NetworkError,
+  TypeSafeApiError,
+} from "../src/classification/classification-errors";
 import type { FolderCandidate } from "../src/classification/folder-candidate";
 import {
   InvalidTypeSafeResponseError,
@@ -117,6 +122,30 @@ describe("classification spike", () => {
         },
       },
     });
+  });
+
+  it("maps SDK connection failures without exposing the raw message", async () => {
+    const adapter = new TypeSafeAdapter("unit-test-only", async () => {
+      throw new APIConnectionError("DNS failed for private endpoint");
+    });
+
+    const failure = adapter.classify(note, candidates);
+    await expect(failure).rejects.toThrow(NetworkError);
+    await expect(failure).rejects.not.toThrow("private endpoint");
+  });
+
+  it("maps API failures without exposing the response body", async () => {
+    const adapter = new TypeSafeAdapter("unit-test-only", async () => {
+      throw new APIError(
+        500,
+        { message: "raw private provider response" },
+        new Headers(),
+      );
+    });
+
+    const failure = adapter.classify(note, candidates);
+    await expect(failure).rejects.toThrow(TypeSafeApiError);
+    await expect(failure).rejects.not.toThrow("raw private provider response");
   });
 
   it("accepts a valid response without independent provider confidence", () => {

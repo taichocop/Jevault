@@ -2,6 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 
 import { CandidateBuilder } from "../src/classification/candidate-builder";
 import {
+  MissingApiKeyError,
+  NoActiveNoteError,
+  NoCandidatesError,
+  UnsupportedFileError,
+} from "../src/classification/classification-errors";
+import {
   ClassificationService,
   type ClassifierFactory,
 } from "../src/classification/classification-service";
@@ -177,9 +183,9 @@ describe("ClassificationService", () => {
     async (apiKey) => {
       const { classify, classifierFactory, service } = createService({ apiKey });
 
-      await expect(service.classifyActiveNote()).resolves.toEqual({
-        status: "missing-secret",
-      });
+      await expect(service.classifyActiveNote()).rejects.toThrow(
+        MissingApiKeyError,
+      );
       expect(classifierFactory).not.toHaveBeenCalled();
       expect(classify).not.toHaveBeenCalled();
     },
@@ -190,25 +196,25 @@ describe("ClassificationService", () => {
       folderPaths: [],
     });
 
-    await expect(service.classifyActiveNote()).resolves.toEqual({
-      status: "no-candidates",
-    });
+    await expect(service.classifyActiveNote()).rejects.toThrow(
+      NoCandidatesError,
+    );
     expect(getApiKey).not.toHaveBeenCalled();
     expect(classifierFactory).not.toHaveBeenCalled();
     expect(classify).not.toHaveBeenCalled();
   });
 
-  it.each(["no-active-file", "unsupported-file"] as const)(
-    "does not call a classifier for %s",
-    async (status) => {
+  it.each([
+    ["no-active-file", NoActiveNoteError],
+    ["unsupported-file", UnsupportedFileError],
+  ] as const)("does not call a classifier for %s", async (status, ErrorType) => {
       const { classify, classifierFactory, getApiKey, service } = createService({
         noteState: { status },
       });
 
-      await expect(service.classifyActiveNote()).resolves.toEqual({ status });
+      await expect(service.classifyActiveNote()).rejects.toThrow(ErrorType);
       expect(getApiKey).not.toHaveBeenCalled();
       expect(classifierFactory).not.toHaveBeenCalled();
       expect(classify).not.toHaveBeenCalled();
-    },
-  );
+    });
 });
