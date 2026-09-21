@@ -1,4 +1,4 @@
-import { Plugin } from "obsidian";
+import { Notice, Plugin } from "obsidian";
 
 import { CandidateBuilder } from "./classification/candidate-builder";
 import { ClassificationService } from "./classification/classification-service";
@@ -8,6 +8,9 @@ import { SecretService } from "./secret-service";
 import { loadSettings, type JevaultSettings } from "./settings";
 import { SettingsSaveQueue } from "./settings-save-queue";
 import { JevaultSettingTab } from "./settings-tab";
+import { ClassificationCommand } from "./suggestion/classification-command";
+import { SuggestionModal } from "./suggestion/suggestion-modal";
+import { createSuggestionViewModel } from "./suggestion/suggestion-view-model";
 import { VaultService } from "./vault-service";
 
 export default class JevaultPlugin extends Plugin {
@@ -32,6 +35,30 @@ export default class JevaultPlugin extends Plugin {
       (apiKey) => new TypeSafeAdapter(apiKey),
       () => this.settings,
     );
+    const classificationCommand = new ClassificationCommand({
+      classificationService: this.classificationService,
+      getActiveNotePath: () => this.app.workspace.getActiveFile()?.path ?? null,
+      showLoading: () => {
+        const notice = new Notice("Jevault is classifying this note...", 0);
+        return { hide: () => notice.hide() };
+      },
+      showSuggestions: (noteTitle, result) => {
+        new SuggestionModal(
+          this.app,
+          createSuggestionViewModel(noteTitle, result),
+        ).open();
+      },
+      // 詳細なerror taxonomyとユーザー向け文言は次Issueで統一する。
+      handleFailure: () => console.error("Jevault classification failed."),
+    });
+    this.addCommand({
+      id: "jevault-classify-current-note",
+      // Obsidianがplugin名を付与し、Paletteでは「Jevault: Classify current note」と表示する。
+      name: "Classify current note",
+      callback: () => {
+        void classificationCommand.execute();
+      },
+    });
     const saveQueue = new SettingsSaveQueue(
       async (snapshot) => this.saveData(snapshot),
       () => console.error("Failed to save Jevault settings."),

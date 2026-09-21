@@ -14,7 +14,7 @@ export type ClassificationServiceResult =
   | { status: "unsupported-file" }
   | { status: "no-candidates" }
   | { status: "missing-secret" }
-  | { status: "success"; result: ClassificationResult };
+  | { status: "success"; noteTitle: string; result: ClassificationResult };
 
 type NoteStateProvider = Pick<NoteService, "getActiveNoteState">;
 type FolderPathProvider = Pick<VaultService, "getAvailableFolderPaths">;
@@ -62,6 +62,8 @@ export class ClassificationService {
 
     return {
       status: "success",
+      // UIへ本文やpathを渡さず、結果の対象を示すtitleだけを返す。
+      noteTitle: noteState.note.title,
       result: {
         ...result,
         // providerConfidenceは順位に使わず保持し、probability sort後に表示件数だけを制限する。

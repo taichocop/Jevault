@@ -111,6 +111,7 @@ describe("ClassificationService", () => {
 
     await expect(service.classifyActiveNote()).resolves.toEqual({
       status: "success",
+      noteTitle: "Amazon S3 Storage Classes",
       result: {
         candidates: [
           { path: "programming/aws", probability: 0.85 },
@@ -164,6 +165,7 @@ describe("ClassificationService", () => {
 
     await expect(service.classifyActiveNote()).resolves.toEqual({
       status: "success",
+      noteTitle: "Amazon S3 Storage Classes",
       result: {
         candidates: [{ path: "InboxArchive", probability: 1 }],
       },
