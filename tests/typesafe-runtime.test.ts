@@ -1,3 +1,7 @@
+import { EventEmitter } from "node:events";
+import type { ClientRequest, IncomingMessage, RequestOptions } from "node:http";
+import { PassThrough } from "node:stream";
+import { request as httpsRequest } from "https";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ClassificationCancelledError } from "../src/classification/classification-cancellation";
@@ -8,6 +12,73 @@ import {
 import type { FolderCandidate } from "../src/classification/folder-candidate";
 import { TypeSafeAdapter } from "../src/classification/typesafe-adapter";
 import type { NoteState } from "../src/note-service";
+
+vi.mock("https", () => ({ request: vi.fn() }));
+
+const serve = vi.fn<(input: string, init?: RequestInit) => Promise<Response>>();
+let lastResponse: (PassThrough & { complete: boolean }) | undefined;
+
+// Nodeのrequest/responseだけをfake化し、SDK生成・adapter・stream処理は実装を通す。
+function installHttpsFake(): void {
+  vi.mocked(httpsRequest).mockImplementation((...args: unknown[]) => {
+    const [input, options, receive] = args as [
+      string,
+      RequestOptions,
+      (response: IncomingMessage) => void,
+    ];
+    const request = new EventEmitter() as ClientRequest;
+    let destroyed = false;
+    const abort = (): void => {
+      destroyed = true;
+      lastResponse?.destroy(new Error("synthetic abort"));
+      request.emit("error", new Error("synthetic abort"));
+    };
+    options.signal?.addEventListener("abort", abort, { once: true });
+    request.end = ((body: string) => {
+      void (async () => {
+        try {
+          const reply = await serve(input, {
+            method: options.method,
+            headers: options.headers as HeadersInit,
+            signal: options.signal,
+            body,
+          });
+          if (destroyed) return;
+          const headers: Record<string, string> = {};
+          reply.headers.forEach((value, name) => { headers[name] = value; });
+          const response = Object.assign(new PassThrough(), {
+            statusCode: reply.status,
+            headers,
+            complete: false,
+          });
+          lastResponse = response;
+          response.once("close", () => options.signal?.removeEventListener("abort", abort));
+          receive(response as unknown as IncomingMessage);
+          const reader = reply.body?.getReader();
+          if (reader !== undefined) {
+            while (!response.destroyed) {
+              const chunk = await reader.read();
+              if (chunk.done) break;
+              response.write(chunk.value);
+            }
+          }
+          if (!response.destroyed) {
+            response.complete = true;
+            response.end();
+          }
+        } catch (error) {
+          options.signal?.removeEventListener("abort", abort);
+          if (!destroyed) {
+            lastResponse?.destroy(error as Error);
+            request.emit("error", error);
+          }
+        }
+      })();
+      return request;
+    }) as ClientRequest["end"];
+    return request;
+  });
+}
 
 const note: NoteState = {
   title: "Synthetic runtime note",
@@ -40,11 +111,16 @@ describe("TypeSafe production runtime boundary", () => {
     // executor差し替えでは通らない実SDK constructorを、renderer相当のglobalsで検証する。
     vi.stubGlobal("window", { document: {} });
     vi.stubGlobal("navigator", { userAgent: "Synthetic Electron renderer" });
-    // 各testがtransportを置き換える前も、実networkへ接続できない状態にする。
-    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(providerResponse)));
+    // renderer fetchはCORSで失敗する環境を再現し、実networkはhttpsのfakeで遮断する。
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("Synthetic CORS block"); }));
+    serve.mockReset().mockResolvedValue(jsonResponse(providerResponse));
+    vi.mocked(httpsRequest).mockReset();
+    lastResponse = undefined;
+    installHttpsFake();
   });
 
   afterEach(() => {
+    expect(globalThis.fetch).not.toHaveBeenCalled();
     vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
@@ -52,7 +128,7 @@ describe("TypeSafe production runtime boundary", () => {
   });
 
   it("constructs the real SDK in a Desktop-like renderer without starting a request", async () => {
-    const fetch = vi.mocked(globalThis.fetch);
+    const fetch = serve;
     const adapter = new TypeSafeAdapter("unit-test-only");
 
     expect(fetch).not.toHaveBeenCalled();
@@ -65,7 +141,7 @@ describe("TypeSafe production runtime boundary", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(fetch).toHaveBeenCalledWith(
       "https://api.typesafe.ai/v1/systemone",
-      expect.objectContaining({ method: "POST", redirect: "error" }),
+      expect.objectContaining({ method: "POST" }),
     );
   });
 
@@ -76,7 +152,7 @@ describe("TypeSafe production runtime boundary", () => {
     const spies = logs.map((level) =>
       vi.spyOn(console, level).mockImplementation(() => {}),
     );
-    const fetch = vi.mocked(globalThis.fetch);
+    const fetch = serve;
     const adapter = new TypeSafeAdapter("unit-test-only");
 
     await adapter.classify(note, candidates);
@@ -85,7 +161,9 @@ describe("TypeSafe production runtime boundary", () => {
     expect(fetch.mock.calls[0]?.[0]).toBe(
       "https://api.typesafe.ai/v1/systemone",
     );
-    expect(fetch.mock.calls[0]?.[1]?.redirect).toBe("error");
+    expect(vi.mocked(httpsRequest).mock.calls[0]?.[1]).toMatchObject({
+      agent: false, rejectUnauthorized: true,
+    });
     for (const spy of spies) expect(spy).not.toHaveBeenCalled();
   });
 
@@ -98,7 +176,7 @@ describe("TypeSafe production runtime boundary", () => {
 
     await expect(result).rejects.toBeInstanceOf(ClassificationCancelledError);
     await expect(result).rejects.not.toThrow("synthetic cancellation detail");
-    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(httpsRequest).not.toHaveBeenCalled();
   });
 
   it("aborts an active SDK fetch and never retries the cancelled request", async () => {
@@ -115,7 +193,7 @@ describe("TypeSafe production runtime boundary", () => {
           );
         }),
     );
-    vi.stubGlobal("fetch", fetch);
+    serve.mockImplementation(fetch);
     const controller = new AbortController();
     const adapter = new TypeSafeAdapter("unit-test-only");
     const result = adapter.classify(note, candidates, controller.signal);
@@ -124,7 +202,9 @@ describe("TypeSafe production runtime boundary", () => {
     );
 
     expect(fetch).toHaveBeenCalledTimes(1);
-    expect(fetch.mock.calls[0]?.[1]?.redirect).toBe("error");
+    expect(vi.mocked(httpsRequest).mock.calls[0]?.[1]).toMatchObject({
+      agent: false, rejectUnauthorized: true,
+    });
     expect(transportSignal?.aborted).toBe(false);
     controller.abort();
 
@@ -140,7 +220,7 @@ describe("TypeSafe production runtime boundary", () => {
     async (status) => {
       vi.useFakeTimers();
       const fetch = vi.fn(async () => jsonResponse({ error: "synthetic" }, status));
-      vi.stubGlobal("fetch", fetch);
+      serve.mockImplementation(fetch);
       const controller = new AbortController();
       const adapter = new TypeSafeAdapter("unit-test-only");
 
@@ -160,7 +240,7 @@ describe("TypeSafe production runtime boundary", () => {
     const fetch = vi.fn(async () => {
       throw new Error("synthetic connection failure");
     });
-    vi.stubGlobal("fetch", fetch);
+    serve.mockImplementation(fetch);
     const adapter = new TypeSafeAdapter("unit-test-only");
 
     await expect(adapter.classify(note, candidates)).rejects.toBeInstanceOf(
@@ -172,12 +252,13 @@ describe("TypeSafe production runtime boundary", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("sanitizes a transport redirect rejection without an automatic retry", async () => {
+  it("rejects a real redirect response without following its Location or retrying", async () => {
     vi.useFakeTimers();
-    const fetch = vi.fn(async () => {
-      throw new TypeError("synthetic redirect to https://example.invalid");
-    });
-    vi.stubGlobal("fetch", fetch);
+    const fetch = vi.fn(async () => new Response(null, {
+      status: 307,
+      headers: { Location: "https://example.invalid" },
+    }));
+    serve.mockImplementation(fetch);
     const adapter = new TypeSafeAdapter("unit-test-only");
     const result = adapter.classify(note, candidates);
 
@@ -186,6 +267,69 @@ describe("TypeSafe production runtime boundary", () => {
     await vi.advanceTimersByTimeAsync(120_000);
 
     expect(fetch).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("aborts HTTPS while the response body is still arriving", async () => {
+    let body!: ReadableStreamDefaultController<Uint8Array>;
+    serve.mockResolvedValue(new Response(new ReadableStream<Uint8Array>({
+      start(controller) {
+        body = controller;
+        controller.enqueue(new TextEncoder().encode('{"answers":'));
+      },
+    })));
+    const controller = new AbortController();
+    const adapter = new TypeSafeAdapter("unit-test-only");
+    const result = adapter.classify(note, candidates, controller.signal);
+    const cancelled = expect(result).rejects.toBeInstanceOf(ClassificationCancelledError);
+    await vi.waitFor(() => expect(lastResponse).toBeDefined());
+
+    controller.abort();
+    body.close();
+
+    await cancelled;
+    expect(lastResponse?.destroyed).toBe(true);
+    expect(httpsRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["error", "close", "incomplete-end"] as const)(
+    "handles response body %s as a safe network failure without retry",
+    async (failure) => {
+      let body!: ReadableStreamDefaultController<Uint8Array>;
+      serve.mockResolvedValue(new Response(new ReadableStream<Uint8Array>({
+        start(controller) {
+          body = controller;
+          controller.enqueue(new TextEncoder().encode('{"answers":'));
+        },
+      })));
+      const adapter = new TypeSafeAdapter("unit-test-only");
+      const result = adapter.classify(note, candidates);
+      const rejected = expect(result).rejects.toBeInstanceOf(NetworkError);
+      await vi.waitFor(() => expect(lastResponse).toBeDefined());
+
+      if (failure === "error") lastResponse!.destroy(new Error("Synthetic private transport detail"));
+      else if (failure === "close") lastResponse!.destroy();
+      else lastResponse!.end();
+      await rejected;
+      body.close();
+
+      await expect(result).rejects.not.toThrow("Synthetic private transport detail");
+      expect(httpsRequest).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("aborts HTTPS on the SDK timeout without retry", async () => {
+    vi.useFakeTimers();
+    serve.mockImplementation(() => new Promise(() => {}));
+    const adapter = new TypeSafeAdapter("unit-test-only");
+    const result = adapter.classify(note, candidates);
+    const rejected = expect(result).rejects.toBeInstanceOf(NetworkError);
+
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    await rejected;
+    expect(serve.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
+    expect(httpsRequest).toHaveBeenCalledTimes(1);
     expect(vi.getTimerCount()).toBe(0);
   });
 
