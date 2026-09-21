@@ -2,9 +2,11 @@
 
 ## Reporting a vulnerability
 
-The repository does not currently document a verified private vulnerability-reporting channel. Do not include sensitive vulnerability details, API keys, note contents, or other secrets in a public issue.
+Jevault uses **GitHub Private Vulnerability Reporting** as its security-reporting channel.
 
-The project owner must designate a private reporting channel before public release. If GitHub Private Vulnerability Reporting is enabled for this repository, use the repository's **Security → Report a vulnerability** form.
+GitHub makes Private Vulnerability Reporting available for public repositories. After this repository is made public, the project owner will enable the feature before Community Plugin submission. Once enabled, report vulnerabilities through the repository's **Security → Report a vulnerability** form.
+
+Until the repository is public and Private Vulnerability Reporting has been enabled, do not include sensitive vulnerability details, API keys, note contents, or other secrets in a public issue.
 
 ## Secrets
 
