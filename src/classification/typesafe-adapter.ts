@@ -26,6 +26,8 @@ const DESTINATION_INSTRUCTIONS =
   "Which existing vault folder is the most appropriate destination for this note?";
 
 type SystemOneExecutor = (request: SystemOneRequest) => Promise<unknown>;
+type ProviderFailureKind = "network" | "api";
+type ProviderFailureClassifier = (error: unknown) => ProviderFailureKind;
 
 interface UnknownRecord {
   [key: string]: unknown;
@@ -37,7 +39,12 @@ export { InvalidTypeSafeResponseError } from "./classification-errors";
 export class TypeSafeAdapter implements Classifier {
   private readonly execute: SystemOneExecutor;
 
-  constructor(apiKey: string, execute?: SystemOneExecutor) {
+  constructor(
+    apiKey: string,
+    execute?: SystemOneExecutor,
+    private readonly classifyProviderFailure: ProviderFailureClassifier =
+      classifyTypeSafeFailure,
+  ) {
     if (execute !== undefined) {
       this.execute = execute;
       return;
@@ -70,7 +77,7 @@ export class TypeSafeAdapter implements Classifier {
       });
     } catch (error: unknown) {
       // SDKの詳細やresponse bodyをdomain/UIへ渡さず、通信失敗だけを区別する。
-      if (error instanceof APIConnectionError) {
+      if (this.classifyProviderFailure(error) === "network") {
         throw new NetworkError();
       }
       throw new TypeSafeApiError();
@@ -78,6 +85,11 @@ export class TypeSafeAdapter implements Classifier {
 
     return mapTypeSafeResponse(response, candidates);
   }
+}
+
+/** SDK error classの判定はadapter内へ閉じ、testではprovider非依存の分類関数へ差し替える。 */
+function classifyTypeSafeFailure(error: unknown): ProviderFailureKind {
+  return error instanceof APIConnectionError ? "network" : "api";
 }
 
 /** 信頼境界の外から来た値を、domainの正常値として扱う前に検証する。 */
