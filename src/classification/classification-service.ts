@@ -3,6 +3,12 @@ import type { SecretService } from "../secret-service";
 import type { JevaultSettings } from "../settings";
 import type { VaultService } from "../vault-service";
 import type { CandidateBuilder } from "./candidate-builder";
+import {
+  MissingApiKeyError,
+  NoActiveNoteError,
+  NoCandidatesError,
+  UnsupportedFileError,
+} from "./classification-errors";
 import type { ClassificationResult } from "./classification-result";
 import type { Classifier } from "./classifier";
 import { classifyAndSort } from "./classify-and-sort";
@@ -10,11 +16,7 @@ import { classifyAndSort } from "./classify-and-sort";
 export type ClassifierFactory = (apiKey: string) => Classifier;
 
 export type ClassificationServiceResult =
-  | { status: "no-active-file" }
-  | { status: "unsupported-file" }
-  | { status: "no-candidates" }
-  | { status: "missing-secret" }
-  | { status: "success"; noteTitle: string; result: ClassificationResult };
+  { status: "success"; noteTitle: string; result: ClassificationResult };
 
 type NoteStateProvider = Pick<NoteService, "getActiveNoteState">;
 type FolderPathProvider = Pick<VaultService, "getAvailableFolderPaths">;
@@ -33,9 +35,11 @@ export class ClassificationService {
 
   async classifyActiveNote(): Promise<ClassificationServiceResult> {
     const noteState = await this.noteService.getActiveNoteState();
-    if (noteState.status !== "ready") {
-      // NoteServiceの失敗理由を保ち、本文がない状態で後続処理や外部通信へ進まない。
-      return noteState;
+    if (noteState.status === "no-active-file") {
+      throw new NoActiveNoteError();
+    }
+    if (noteState.status === "unsupported-file") {
+      throw new UnsupportedFileError();
     }
 
     const settings = this.getSettings();
@@ -43,13 +47,13 @@ export class ClassificationService {
     const candidates = this.candidateBuilder.build(folderPaths);
     if (candidates.length === 0) {
       // Choiceを構築できないため、Secret解決やClassifier生成より前に終了する。
-      return { status: "no-candidates" };
+      throw new NoCandidatesError();
     }
 
     const apiKey = this.secretService.getApiKey(settings.apiKeySecretName);
     if (apiKey === null || apiKey.trim().length === 0) {
       // blank値でも認証不能な通信へ進まないよう、credential自体は加工せず利用可否だけを判定する。
-      return { status: "missing-secret" };
+      throw new MissingApiKeyError();
     }
 
     // factory境界によりapplication層はTypeSafe SDKを知らず、解決済みSecretもadapterへだけ渡す。

@@ -1,4 +1,5 @@
 import {
+  APIConnectionError,
   choice,
   TypeSafeClient,
   type SystemOneRequest,
@@ -11,6 +12,11 @@ import type {
   ClassificationResult,
 } from "./classification-result";
 import type { Classifier } from "./classifier";
+import {
+  InvalidTypeSafeResponseError,
+  NetworkError,
+  TypeSafeApiError,
+} from "./classification-errors";
 import type { FolderCandidate } from "./folder-candidate";
 
 export { TYPE_SAFE_SDK_VERSION };
@@ -20,23 +26,25 @@ const DESTINATION_INSTRUCTIONS =
   "Which existing vault folder is the most appropriate destination for this note?";
 
 type SystemOneExecutor = (request: SystemOneRequest) => Promise<unknown>;
+type ProviderFailureKind = "network" | "api";
+type ProviderFailureClassifier = (error: unknown) => ProviderFailureKind;
 
 interface UnknownRecord {
   [key: string]: unknown;
 }
 
-export class InvalidTypeSafeResponseError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "InvalidTypeSafeResponseError";
-  }
-}
+export { InvalidTypeSafeResponseError } from "./classification-errors";
 
 /** TypeSafe固有のrequest構築・通信・response変換をdomainへ漏らさないadapter。 */
 export class TypeSafeAdapter implements Classifier {
   private readonly execute: SystemOneExecutor;
 
-  constructor(apiKey: string, execute?: SystemOneExecutor) {
+  constructor(
+    apiKey: string,
+    execute?: SystemOneExecutor,
+    private readonly classifyProviderFailure: ProviderFailureClassifier =
+      classifyTypeSafeFailure,
+  ) {
     if (execute !== undefined) {
       this.execute = execute;
       return;
@@ -55,19 +63,33 @@ export class TypeSafeAdapter implements Classifier {
     const criteria = Object.fromEntries(
       candidates.map((candidate) => [candidate.path, candidate.description]),
     );
-    const response = await this.execute({
-      state: {
-        title: note.title,
-        path: note.path,
-        body: note.body,
-      },
-      questions: {
-        [DESTINATION_QUESTION]: choice(DESTINATION_INSTRUCTIONS, criteria),
-      },
-    });
+    let response: unknown;
+    try {
+      response = await this.execute({
+        state: {
+          title: note.title,
+          path: note.path,
+          body: note.body,
+        },
+        questions: {
+          [DESTINATION_QUESTION]: choice(DESTINATION_INSTRUCTIONS, criteria),
+        },
+      });
+    } catch (error: unknown) {
+      // SDKの詳細やresponse bodyをdomain/UIへ渡さず、通信失敗だけを区別する。
+      if (this.classifyProviderFailure(error) === "network") {
+        throw new NetworkError();
+      }
+      throw new TypeSafeApiError();
+    }
 
     return mapTypeSafeResponse(response, candidates);
   }
+}
+
+/** SDK error classの判定はadapter内へ閉じ、testではprovider非依存の分類関数へ差し替える。 */
+function classifyTypeSafeFailure(error: unknown): ProviderFailureKind {
+  return error instanceof APIConnectionError ? "network" : "api";
 }
 
 /** 信頼境界の外から来た値を、domainの正常値として扱う前に検証する。 */
@@ -75,21 +97,17 @@ export function mapTypeSafeResponse(
   response: unknown,
   candidates: readonly FolderCandidate[],
 ): ClassificationResult {
-  const root = asRecord(response, "response");
-  const answers = asRecord(root.answers, "answers");
-  const answer = asRecord(answers[DESTINATION_QUESTION], "destination answer");
+  const root = asRecord(response);
+  const answers = asRecord(root.answers);
+  const answer = asRecord(answers[DESTINATION_QUESTION]);
   if (answer.type !== "choice") {
-    throw new InvalidTypeSafeResponseError(
-      "TypeSafe destination answer must be a Choice response.",
-    );
+    throw new InvalidTypeSafeResponseError();
   }
   const allowedPaths = new Set(candidates.map((candidate) => candidate.path));
   if (typeof answer.choice !== "string" || !allowedPaths.has(answer.choice)) {
-    throw new InvalidTypeSafeResponseError(
-      "TypeSafe destination answer contains an unknown selected path.",
-    );
+    throw new InvalidTypeSafeResponseError();
   }
-  const probabilities = asRecord(answer.probabilities, "probabilities");
+  const probabilities = asRecord(answer.probabilities);
   const rawCandidates = Object.entries(probabilities).map(
     ([path, probability]) => ({ path, probability }),
   );
@@ -100,14 +118,9 @@ export function mapTypeSafeResponse(
   if (
     !validatedCandidates.some((candidate) => candidate.path === answer.choice)
   ) {
-    throw new InvalidTypeSafeResponseError(
-      "TypeSafe destination answer selected a path without a probability.",
-    );
+    throw new InvalidTypeSafeResponseError();
   }
-  const providerConfidence = validateOptionalProbability(
-    answer.confidence,
-    "provider confidence",
-  );
+  const providerConfidence = validateOptionalProbability(answer.confidence);
 
   return providerConfidence === undefined
     ? { candidates: validatedCandidates }
@@ -119,42 +132,31 @@ export function validateClassificationCandidates(
   candidates: readonly FolderCandidate[],
 ): ClassificationCandidate[] {
   if (!Array.isArray(value) || value.length === 0) {
-    throw new InvalidTypeSafeResponseError(
-      "TypeSafe response must contain at least one candidate.",
-    );
+    throw new InvalidTypeSafeResponseError();
   }
 
   const allowedPaths = new Set(candidates.map((candidate) => candidate.path));
   const observedPaths = new Set<string>();
 
-  const validatedCandidates = value.map((entry, index) => {
-    const candidate = asRecord(entry, `candidate ${index}`);
+  const validatedCandidates = value.map((entry) => {
+    const candidate = asRecord(entry);
     if (typeof candidate.path !== "string" || !allowedPaths.has(candidate.path)) {
-      throw new InvalidTypeSafeResponseError(
-        `TypeSafe response contains an unknown candidate path at index ${index}.`,
-      );
+      throw new InvalidTypeSafeResponseError();
     }
     if (observedPaths.has(candidate.path)) {
-      throw new InvalidTypeSafeResponseError(
-        `TypeSafe response contains a duplicate candidate path at index ${index}.`,
-      );
+      throw new InvalidTypeSafeResponseError();
     }
     observedPaths.add(candidate.path);
 
     return {
       path: candidate.path,
-      probability: validateProbability(
-        candidate.probability,
-        `candidate probability at index ${index}`,
-      ),
+      probability: validateProbability(candidate.probability),
     };
   });
 
   // 候補の欠落を許すと未評価のfolderを0扱いしてしまうため、集合の完全一致を要求する。
   if (observedPaths.size !== allowedPaths.size) {
-    throw new InvalidTypeSafeResponseError(
-      "TypeSafe response must contain every requested candidate path exactly once.",
-    );
+    throw new InvalidTypeSafeResponseError();
   }
 
   return validatedCandidates;
@@ -173,32 +175,25 @@ function assertValidInputPaths(candidates: readonly FolderCandidate[]): void {
   }
 }
 
-function asRecord(value: unknown, label: string): UnknownRecord {
+function asRecord(value: unknown): UnknownRecord {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new InvalidTypeSafeResponseError(
-      `TypeSafe ${label} must be an object.`,
-    );
+    throw new InvalidTypeSafeResponseError();
   }
   return value as UnknownRecord;
 }
 
-function validateOptionalProbability(
-  value: unknown,
-  label: string,
-): number | undefined {
-  return value === undefined ? undefined : validateProbability(value, label);
+function validateOptionalProbability(value: unknown): number | undefined {
+  return value === undefined ? undefined : validateProbability(value);
 }
 
-function validateProbability(value: unknown, label: string): number {
+function validateProbability(value: unknown): number {
   if (
     typeof value !== "number" ||
     !Number.isFinite(value) ||
     value < 0 ||
     value > 1
   ) {
-    throw new InvalidTypeSafeResponseError(
-      `TypeSafe ${label} must be a finite number between 0 and 1.`,
-    );
+    throw new InvalidTypeSafeResponseError();
   }
   return value;
 }

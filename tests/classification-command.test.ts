@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
+import {
+  MissingApiKeyError,
+  NetworkError,
+  NoActiveNoteError,
+} from "../src/classification/classification-errors";
 import type { ClassificationServiceResult } from "../src/classification/classification-service";
 import { ClassificationCommand } from "../src/suggestion/classification-command";
 
@@ -28,16 +33,16 @@ function createCommand(
   const hide = vi.fn();
   const showLoading = vi.fn(() => ({ hide }));
   const showSuggestions = vi.fn();
-  const handleFailure = vi.fn();
+  const showError = vi.fn();
   const command = new ClassificationCommand({
     classificationService: { classifyActiveNote },
     getActiveNotePath,
     showLoading,
     showSuggestions,
-    handleFailure,
+    showError,
   });
 
-  return { command, handleFailure, hide, showLoading, showSuggestions };
+  return { command, hide, showError, showLoading, showSuggestions };
 }
 
 describe("ClassificationCommand", () => {
@@ -99,37 +104,88 @@ describe("ClassificationCommand", () => {
     await Promise.all([first, second]);
   });
 
-  it("cleans up loading and allows retry after a thrown failure", async () => {
+  it("retries through ClassificationService and shows suggestions after success", async () => {
     const classifyActiveNote = vi
       .fn<() => Promise<ClassificationServiceResult>>()
-      .mockRejectedValueOnce(new Error("network failure"))
+      .mockRejectedValueOnce(new NetworkError())
       .mockResolvedValueOnce(success);
-    const { command, handleFailure, hide, showSuggestions } =
+    const { command, hide, showError, showSuggestions } =
       createCommand(classifyActiveNote);
 
     await command.execute();
-    await command.execute();
+    const retry = showError.mock.calls[0]?.[1] as () => Promise<unknown>;
+    await expect(retry()).resolves.toEqual({ status: "success" });
 
     expect(classifyActiveNote).toHaveBeenCalledTimes(2);
-    expect(handleFailure).toHaveBeenCalledOnce();
+    expect(showError).toHaveBeenCalledWith(
+      {
+        message: "Jevault couldn't classify this note.\nPlease try again.",
+        retryable: true,
+      },
+      expect.any(Function),
+    );
     expect(showSuggestions).toHaveBeenCalledOnce();
     expect(hide).toHaveBeenCalledTimes(2);
   });
 
-  it("cleans up loading and allows retry after a failure result", async () => {
-    const classifyActiveNote = vi.fn(async () => ({
-      status: "missing-secret" as const,
-    }));
-    const { command, handleFailure, hide, showSuggestions } =
+  it("shows the latest error after retry failure", async () => {
+    const classifyActiveNote = vi
+      .fn<() => Promise<ClassificationServiceResult>>()
+      .mockRejectedValueOnce(new NetworkError())
+      .mockRejectedValueOnce(new MissingApiKeyError());
+    const { command, hide, showError, showSuggestions } =
       createCommand(classifyActiveNote);
 
     await command.execute();
-    await command.execute();
+    const retry = showError.mock.calls[0]?.[1] as () => Promise<unknown>;
+    await expect(retry()).resolves.toEqual({
+      status: "failure",
+      presentation: {
+        message:
+          "TypeSafe API key is not configured.\nOpen Jevault settings to select a secret.",
+        retryable: false,
+      },
+    });
 
     expect(classifyActiveNote).toHaveBeenCalledTimes(2);
     expect(showSuggestions).not.toHaveBeenCalled();
-    expect(handleFailure).not.toHaveBeenCalled();
     expect(hide).toHaveBeenCalledTimes(2);
+  });
+
+  it("prevents duplicate Retry requests while the first Retry is pending", async () => {
+    const pending = deferred<ClassificationServiceResult>();
+    const classifyActiveNote = vi
+      .fn<() => Promise<ClassificationServiceResult>>()
+      .mockRejectedValueOnce(new NetworkError())
+      .mockImplementationOnce(() => pending.promise);
+    const { command, showError } = createCommand(classifyActiveNote);
+
+    await command.execute();
+    const retry = showError.mock.calls[0]?.[1] as () => Promise<unknown>;
+    const first = retry();
+    const second = retry();
+
+    expect(classifyActiveNote).toHaveBeenCalledTimes(2);
+    await expect(second).resolves.toEqual({ status: "ignored" });
+    pending.resolve(success);
+    await expect(first).resolves.toEqual({ status: "success" });
+  });
+
+  it("maps non-retryable failures without a Retry callback", async () => {
+    const classifyActiveNote = vi
+      .fn<() => Promise<ClassificationServiceResult>>()
+      .mockRejectedValue(new NoActiveNoteError());
+    const { command, showError } = createCommand(classifyActiveNote);
+
+    await command.execute();
+
+    expect(showError).toHaveBeenCalledWith(
+      {
+        message: "Open a Markdown note before running Jevault.",
+        retryable: false,
+      },
+      undefined,
+    );
   });
 
   it("hides every pending loading handle and ignores late success after dispose", async () => {
@@ -163,14 +219,14 @@ describe("ClassificationCommand", () => {
   it("consumes a pending rejection without failure UI after dispose", async () => {
     const pending = deferred<ClassificationServiceResult>();
     const classifyActiveNote = vi.fn(() => pending.promise);
-    const { command, handleFailure, hide } = createCommand(classifyActiveNote);
+    const { command, hide, showError } = createCommand(classifyActiveNote);
 
     const execution = command.execute();
     command.dispose();
     pending.reject(new Error("late network failure"));
     await execution;
 
-    expect(handleFailure).not.toHaveBeenCalled();
+    expect(showError).not.toHaveBeenCalled();
     expect(hide).toHaveBeenCalledOnce();
   });
 
