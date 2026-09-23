@@ -23,7 +23,7 @@ Complete this checklist from a clean checkout and use only a dedicated, isolated
 - [ ] GitHub Private Vulnerability Reporting is enabled after the repository becomes public and before Community Plugin submission.
 - [ ] The repository's **Security → Report a vulnerability** flow is visible after Private Vulnerability Reporting is enabled.
 - [ ] The TypeSafe data disclosure lists the note title, Vault-relative note path, full Markdown note body, and candidate folder paths.
-- [ ] The TypeSafe account and bring-your-own API key requirements are disclosed.
+- [ ] `README.md` clearly discloses TypeSafe account, bring-your-own API key, network use, and payment/credit requirements.
 
 ## Safety and submission compliance
 
@@ -32,7 +32,6 @@ Complete this checklist from a clean checkout and use only a dedicated, isolated
 - [ ] The only intentional Vault mutation is an explicitly confirmed manual move through Obsidian; no automatic move or custom content rewrite exists.
 - [ ] Command IDs do not repeat the plugin ID; the classification command ID is `classify-current-note`.
 - [ ] The repository contains no sample code, ads, self-update behavior, dynamic remote code, or dependency auto-install behavior.
-- [ ] External TypeSafe network use and account requirements are disclosed in `README.md`.
 - [ ] Desktop-only metadata remains correct.
 
 ## Clean-install manual verification

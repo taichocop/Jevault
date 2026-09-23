@@ -22,6 +22,8 @@ Jevault suggests existing destination folders. You can explicitly select a sugge
 
 Jevault uses the TypeSafe API for classification, so it does not provide an offline classification mode.
 
+Each classification or **Retry** request that reaches TypeSafe consumes TypeSafe-managed credits from your account. Depending on your credit balance, you may need to purchase credits from TypeSafe and incur TypeSafe charges. TypeSafe may offer promotional credits, but it controls their availability and terms; Jevault does not guarantee them. See [TypeSafe's current terms](https://typesafe.ai/legal/mca) and [pricing information](https://typesafe.ai/) for details.
+
 ## Setup
 
 Open **Settings → Community plugins → Jevault**, then configure:
