@@ -74,7 +74,7 @@ See [PRIVACY.md](PRIVACY.md) for details and the [TypeSafe privacy policy](https
 
 ## Manual installation
 
-Build the plugin, then copy `manifest.json`, `main.js`, and `styles.css` into `.obsidian/plugins/jevault/` in a dedicated test vault. Reload Obsidian and enable **Jevault** under Community plugins.
+Build the plugin, then copy `manifest.json`, `main.js`, and `styles.css` into `<current Obsidian config directory>/plugins/jevault/` in a dedicated test vault. The default location is `.obsidian/plugins/jevault/`. Reload Obsidian and enable **Jevault** under Community plugins.
 
 ## Development
 
