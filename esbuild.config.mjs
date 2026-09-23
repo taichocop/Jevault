@@ -3,6 +3,8 @@ import process from "node:process";
 
 import esbuild from "esbuild";
 
+import { thirdPartyNotice } from "./scripts/third-party-notices.mjs";
+
 const production = process.argv[2] === "production";
 
 const context = await esbuild.context({
@@ -31,6 +33,7 @@ const context = await esbuild.context({
   treeShaking: true,
   outfile: "main.js",
   minify: production,
+  banner: production ? { js: thirdPartyNotice } : undefined,
 });
 
 if (production) {

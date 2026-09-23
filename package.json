@@ -7,11 +7,12 @@
   "private": true,
   "scripts": {
     "dev": "node esbuild.config.mjs",
-    "build": "npm run typecheck && node esbuild.config.mjs production",
+    "build": "npm run typecheck && node esbuild.config.mjs production && npm run verify:licenses",
+    "verify:licenses": "node scripts/verify-license-notices.mjs",
     "test": "vitest run",
     "spike:typesafe": "vitest run --config vitest.integration.config.ts",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src tests"
+    "lint": "eslint src tests scripts esbuild.config.mjs"
   },
   "engines": {
     "node": "^20.19.0 || ^22.13.0 || >=24.0.0"
