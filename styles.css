@@ -1,0 +1,20 @@
+.jevault-suggestion-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-3);
+  margin: var(--size-4-4) 0;
+  padding: 0;
+  list-style: none;
+}
+
+.jevault-suggestion-list .jevault-suggestion-candidate {
+  width: 100%;
+  height: auto;
+  min-height: calc(var(--input-height) + var(--size-4-2));
+  padding: var(--size-4-3);
+  justify-content: flex-start;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}

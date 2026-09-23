@@ -2,7 +2,7 @@
 
 ## Goal and priorities
 
-Jevault is an Obsidian plugin that suggests destination folders for Markdown notes. v0.1 is suggestion-only.
+Jevault is an Obsidian plugin that suggests destination folders for Markdown notes. v0.1 supports suggestions and explicitly confirmed manual moves (Issue #33); no automatic moves.
 
 Prioritize: user data safety, privacy, correctness, simplicity, testability, then performance.
 
@@ -35,6 +35,6 @@ Prioritize: user data safety, privacy, correctness, simplicity, testability, the
 
 ## Code Review Rules
 
-- Flag any unapproved Vault mutation or background behavior; v0.1 must remain suggestion-only.
+- Flag any unapproved Vault mutation or background behavior; manual moves must follow selection plus explicit confirmation and must never overwrite or fall back to the active note.
 - Flag Secret exposure, persistence, logging, or unapproved external data flow.
 - Flag Issue-scope violations, TypeSafe SDK use outside `TypeSafeAdapter`, or business logic in `main.ts`.

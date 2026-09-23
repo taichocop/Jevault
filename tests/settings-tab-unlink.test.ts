@@ -1,3 +1,4 @@
+import { fixtureSource } from "./helpers/note-source";
 import type { App, Plugin } from "obsidian";
 import { describe, expect, it, vi } from "vitest";
 
@@ -72,6 +73,7 @@ describe("SecretComponent unlink", () => {
     const service = new ClassificationService(
       { getActiveNoteState: async () => ({
         status: "ready" as const,
+        source: fixtureSource("Example.md"),
         note: { title: "Example", path: "Example.md", body: "Synthetic note" },
       }) },
       { getAvailableFolderPaths: () => ["Projects"] },

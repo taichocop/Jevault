@@ -27,6 +27,7 @@ describe("NoteService", () => {
 
     await expect(service.getActiveNoteState()).resolves.toEqual({
       status: "ready",
+      source: expect.objectContaining({ path: expect.any(String) }),
       note: {
         title: "IAM Role",
         path: "Inbox/IAM Role.md",
@@ -45,6 +46,7 @@ describe("NoteService", () => {
 
     await expect(service.getActiveNoteState()).resolves.toMatchObject({
       status: "ready",
+      source: expect.objectContaining({ path: expect.any(String) }),
       note: {
         title: "S3 Storage Classes",
         path: "programming/aws/S3 Storage Classes.md",
@@ -58,6 +60,7 @@ describe("NoteService", () => {
 
     await expect(service.getActiveNoteState()).resolves.toEqual({
       status: "ready",
+      source: expect.objectContaining({ path: expect.any(String) }),
       note: {
         title: "筋力トレーニング",
         path: "健康/筋力トレーニング.md",
@@ -71,6 +74,7 @@ describe("NoteService", () => {
 
     await expect(service.getActiveNoteState()).resolves.toEqual({
       status: "ready",
+      source: expect.objectContaining({ path: expect.any(String) }),
       note: {
         title: "Empty",
         path: "Inbox/Empty.md",

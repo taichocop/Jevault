@@ -29,7 +29,7 @@ Complete this checklist from a clean checkout and use only a dedicated, isolated
 
 - [ ] The plugin implements no telemetry, analytics, tracking, or crash reporting.
 - [ ] No secret values, tracked plaintext `.env` files, SecretStorage dumps, note-body logs, or full environment dumps are present.
-- [ ] No unexpected Vault mutation is present; v0.1 remains suggestion-only and read-only.
+- [ ] The only intentional Vault mutation is an explicitly confirmed manual move through Obsidian; no automatic move or custom content rewrite exists.
 - [ ] Command IDs do not repeat the plugin ID; the classification command ID is `classify-current-note`.
 - [ ] The repository contains no sample code, ads, self-update behavior, dynamic remote code, or dependency auto-install behavior.
 - [ ] External TypeSafe network use and account requirements are disclosed in `README.md`.
@@ -43,13 +43,31 @@ Complete this checklist from a clean checkout and use only a dedicated, isolated
 - [ ] Confirm the Command Palette contains **Jevault: Classify current note**.
 - [ ] Confirm a missing API key produces safe error UI without a network request.
 - [ ] Disable and re-enable the plugin without a runtime error.
-- [ ] Compare the fixture Vault before and after testing and confirm its notes and folders are unchanged.
+- [ ] Compare the fixture Vault before and after testing: only explicitly confirmed moves and Obsidian-managed link updates are allowed.
+
+## Manual move verification (isolated synthetic Vault only)
+
+- [ ] Clicking a numbered candidate and pressing its number select the same candidate and show source, destination folder, and target path; selection alone does not move.
+- [ ] Invalid numbers, modifier shortcuts, key repeat, and editable focus do not trigger selection.
+- [ ] Enter before selection does not move; Enter after selection explicitly confirms.
+- [ ] Cancel / Esc / Close before confirmation do not move.
+- [ ] Explicit confirmation moves the exact classified note, even after switching the active note.
+- [ ] Filename, extension, and content hash are preserved for a fixture without links requiring Obsidian updates.
+- [ ] Collision (including case-equivalent names) does not overwrite or auto-rename either note.
+- [ ] Source deletion, rename, move, or replacement at the same path fails safely.
+- [ ] Destination disappearance or replacement by a file fails safely without folder creation.
+- [ ] Already-in-folder produces feedback and zero move calls.
+- [ ] Repeated Move / Enter while pending executes once; completed suggestions cannot be reused.
+- [ ] Unload before move prevents mutation; Close/unload after API start causes no rollback or stale UI.
+- [ ] Manual selection/confirmation/move makes no new TypeSafe request.
+- [ ] Compare click and number-key flows; retain both for project-owner UX review.
+- [ ] Verify supported Obsidian collision behavior for on-disk conflicts and external changes around the API call.
 
 ## Release assets and publishing
 
 - [ ] `manifest.json` is present and valid.
 - [ ] A production `main.js` has been generated.
-- [ ] Do not create or attach an empty `styles.css`; include it only if the plugin actually uses one.
-- [ ] Verify the GitHub release contains `manifest.json` and `main.js` as binary attachments.
+- [ ] Include `styles.css` for the scoped suggestion spacing and button layout; verify candidate spacing and long-path wrapping in the test Vault.
+- [ ] Verify the GitHub release contains `manifest.json`, `main.js`, and `styles.css` as binary attachments.
 - [ ] Use release tag `0.1.0`, exactly matching the manifest version; do not use `v0.1.0`.
 - [ ] Perform final diff, dependency, secret, Vault-mutation, and scope reviews before publishing.

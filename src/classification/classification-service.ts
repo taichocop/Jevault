@@ -1,4 +1,5 @@
 import type { NoteService } from "../note-service";
+import type { NoteSource } from "../note-source";
 import type { SecretService } from "../secret-service";
 import type { JevaultSettings } from "../settings";
 import type { VaultService } from "../vault-service";
@@ -16,8 +17,12 @@ import { classifyAndSort } from "./classify-and-sort";
 
 export type ClassifierFactory = (apiKey: string) => Classifier;
 
-export type ClassificationServiceResult =
-  { status: "success"; noteTitle: string; result: ClassificationResult };
+export interface ClassificationServiceResult {
+  status: "success";
+  noteTitle: string;
+  source: NoteSource;
+  result: ClassificationResult;
+}
 
 type NoteStateProvider = Pick<NoteService, "getActiveNoteState">;
 type FolderPathProvider = Pick<VaultService, "getAvailableFolderPaths">;
@@ -76,8 +81,9 @@ export class ClassificationService {
 
     return {
       status: "success",
-      // UIへ本文やpathを渡さず、結果の対象を示すtitleだけを返す。
+      // 本文やSecretを結果へ含めず、移動対象のidentityだけをapplication層へ渡す。
       noteTitle: noteState.note.title,
+      source: noteState.source,
       result: {
         ...result,
         // providerConfidenceは順位に使わず保持し、probability sort後に表示件数だけを制限する。
