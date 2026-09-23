@@ -270,6 +270,63 @@ describe("TypeSafe production runtime boundary", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it("rejects an HTTP 101 upgrade, destroys its socket, and does not retry", async () => {
+    vi.useFakeTimers();
+    const request = new EventEmitter() as ClientRequest;
+    const privateDetail = "Synthetic private upgrade detail";
+    const destroy = vi.fn(() => request.emit("close"));
+    request.end = vi.fn(() => {
+      void Promise.resolve().then(() => {
+        request.emit("finish");
+        // 101はNodeでresponse callbackではなくupgrade eventへ分岐する。
+        request.emit(
+          "upgrade",
+          { statusCode: 101, statusMessage: privateDetail },
+          { destroy },
+          Buffer.from(privateDetail),
+        );
+      });
+      return request;
+    }) as ClientRequest["end"];
+    vi.mocked(httpsRequest).mockImplementationOnce(() => request);
+    const controller = new AbortController();
+    const result = new TypeSafeAdapter("unit-test-only").classify(
+      note,
+      candidates,
+      controller.signal,
+    );
+
+    await expect(result).rejects.toBeInstanceOf(NetworkError);
+    await expect(result).rejects.not.toThrow(privateDetail);
+    expect(destroy).toHaveBeenCalledOnce();
+    expect(httpsRequest).toHaveBeenCalledOnce();
+    expect(serve).not.toHaveBeenCalled();
+
+    controller.abort();
+    await vi.advanceTimersByTimeAsync(120_000);
+    await expect(result).rejects.toBeInstanceOf(NetworkError);
+    expect(httpsRequest).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("settles if the native request closes without a response or error", async () => {
+    vi.useFakeTimers();
+    const request = new EventEmitter() as ClientRequest;
+    request.end = vi.fn(() => {
+      void Promise.resolve().then(() => request.emit("close"));
+      return request;
+    }) as ClientRequest["end"];
+    vi.mocked(httpsRequest).mockImplementationOnce(() => request);
+    const result = new TypeSafeAdapter("unit-test-only").classify(note, candidates);
+
+    await expect(result).rejects.toBeInstanceOf(NetworkError);
+    expect(httpsRequest).toHaveBeenCalledOnce();
+    expect(serve).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(httpsRequest).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("aborts HTTPS while the response body is still arriving", async () => {
     let body!: ReadableStreamDefaultController<Uint8Array>;
     serve.mockResolvedValue(new Response(new ReadableStream<Uint8Array>({

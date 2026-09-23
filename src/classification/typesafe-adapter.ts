@@ -136,6 +136,7 @@ async function desktopTypeSafeFetch(
   headers["accept-encoding"] = "identity";
 
   return new Promise<Response>((resolve, reject) => {
+    let responseStarted = false;
     const request = httpsRequest(
       TYPE_SAFE_SYSTEM_ONE_URL,
       {
@@ -147,10 +148,22 @@ async function desktopTypeSafeFetch(
         rejectUnauthorized: true,
       },
       (response) => {
+        responseStarted = true;
         void readDesktopResponse(response, signal).then(resolve, reject);
       },
     );
     request.once("error", reject);
+    request.once("upgrade", (_response, socket) => {
+      // 101は通常のresponseを通らないため、接続を破棄して安全に終了する。
+      reject(new Error("Invalid TypeSafe transport response."));
+      socket.destroy();
+    });
+    request.once("close", () => {
+      // response/errorなしの終了でも分類をpendingのまま残さない。
+      if (!responseStarted) {
+        reject(new Error("Invalid TypeSafe transport response."));
+      }
+    });
     request.end(init.body);
   });
 }
