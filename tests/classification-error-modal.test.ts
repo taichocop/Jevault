@@ -1,3 +1,4 @@
+import { fixtureSource } from "./helpers/note-source";
 import type { App } from "obsidian";
 import { describe, expect, it, vi } from "vitest";
 
@@ -124,6 +125,7 @@ describe("ClassificationErrorModal", () => {
 
 const successfulClassification: ClassificationServiceResult = {
   status: "success",
+  source: fixtureSource(),
   noteTitle: "Synthetic fixture",
   result: { candidates: [{ path: "Fixtures", probability: 0.9 }] },
 };
@@ -178,8 +180,8 @@ describe("ClassificationCommand and ClassificationErrorModal lifecycle", () => {
     expect(classifyActiveNote).toHaveBeenCalledTimes(2);
     expect(showError).toHaveBeenCalledOnce();
     expect(showSuggestions).toHaveBeenCalledWith(
-      successfulClassification.noteTitle,
-      successfulClassification.result,
+      successfulClassification,
+      expect.any(AbortSignal),
     );
     expect(hide).toHaveBeenCalledTimes(2);
     expect((modal.contentEl as unknown as FakeElement).children).toEqual([]);

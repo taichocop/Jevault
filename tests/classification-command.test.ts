@@ -1,3 +1,4 @@
+import { fixtureSource } from "./helpers/note-source";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -10,6 +11,7 @@ import { ClassificationCommand } from "../src/suggestion/classification-command"
 
 const success: ClassificationServiceResult = {
   status: "success",
+  source: fixtureSource(),
   noteTitle: "IAM Role",
   result: {
     candidates: [{ path: "programming/aws", probability: 0.964 }],
@@ -54,7 +56,7 @@ describe("ClassificationCommand", () => {
 
     expect(classifyActiveNote).toHaveBeenCalledTimes(1);
     expect(classifyActiveNote).toHaveBeenCalledWith(expect.any(AbortSignal));
-    expect(showSuggestions).toHaveBeenCalledWith("IAM Role", success.result);
+    expect(showSuggestions).toHaveBeenCalledWith(success, expect.any(AbortSignal));
     expect(hide).toHaveBeenCalledOnce();
   });
 

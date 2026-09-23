@@ -1,3 +1,4 @@
+import { fixtureSource } from "../helpers/note-source";
 import { describe, expect, it, vi } from "vitest";
 import type { TAbstractFile } from "obsidian";
 
@@ -59,6 +60,7 @@ describe("explicit dynamic classification integration", () => {
       {
         getActiveNoteState: async () => ({
           status: "ready",
+          source: fixtureSource(),
           note: {
             title: "Amazon S3 Storage Classes",
             path: "Inbox/test-s3.md",

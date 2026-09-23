@@ -1,3 +1,5 @@
+import { fixtureSource } from "./helpers/note-source";
+import type { NoteSource } from "../src/note-source";
 import type { TFile } from "obsidian";
 import { describe, expect, it, vi } from "vitest";
 
@@ -104,6 +106,7 @@ describe("classification cancellation across application boundaries", () => {
   it("checks cancellation after a note provider that ignores its signal", async () => {
     const pending = deferred<{
       status: "ready";
+      source: NoteSource;
       note: { title: string; path: string; body: string };
     }>();
     const getApiKey = vi.fn(() => "unit-test-only");
@@ -121,6 +124,7 @@ describe("classification cancellation across application boundaries", () => {
     controller.abort();
     pending.resolve({
       status: "ready",
+      source: fixtureSource(),
       note: { title: "Synthetic", path: "Synthetic.md", body: "Fixture" },
     });
 

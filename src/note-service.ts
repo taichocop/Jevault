@@ -1,6 +1,7 @@
 import type { TFile, Vault, Workspace } from "obsidian";
 
 import { throwIfCancelled } from "./classification/classification-cancellation";
+import { NoteSource } from "./note-source";
 
 export interface NoteState {
   title: string;
@@ -11,7 +12,7 @@ export interface NoteState {
 export type NoteStateResult =
   | { status: "no-active-file" }
   | { status: "unsupported-file" }
-  | { status: "ready"; note: NoteState };
+  | { status: "ready"; note: NoteState; source: NoteSource };
 
 type ActiveFileReader = Pick<Workspace, "getActiveFile">;
 type NoteBodyReader = Pick<Vault, "read">;
@@ -37,6 +38,9 @@ export class NoteService {
       return { status: "unsupported-file" };
     }
 
+    // read待機中のrenameやactive切替でも、分類開始時のidentityを変更しない。
+    const source = new NoteSource(activeFile);
+    const title = activeFile.basename;
     // OS filesystemを介さずObsidianのread APIだけを使うため、ノートやVaultを変更しない。
     throwIfCancelled(signal);
     const body = await this.vault.read(activeFile);
@@ -44,11 +48,12 @@ export class NoteService {
 
     return {
       status: "ready",
+      source,
       note: {
         // basenameは親folderを含まず、Markdown拡張子も除かれたObsidianのファイル名である。
-        title: activeFile.basename,
+        title,
         // 分類元を一意に保てるよう、nested folderや日本語を含むVault相対pathをそのまま使う。
-        path: activeFile.path,
+        path: source.path,
         body,
       },
     };

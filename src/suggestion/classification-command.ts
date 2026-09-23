@@ -3,7 +3,6 @@ import type {
   ClassificationService,
   ClassificationServiceResult,
 } from "../classification/classification-service";
-import type { ClassificationResult } from "../classification/classification-result";
 import type { RetryResult } from "./classification-error-modal";
 import {
   createErrorPresentation,
@@ -20,7 +19,7 @@ interface ClassificationCommandDependencies {
   classificationService: ClassificationRunner;
   getActiveNotePath: () => string | null;
   showLoading: () => LoadingHandle;
-  showSuggestions: (noteTitle: string, result: ClassificationResult) => void;
+  showSuggestions: (outcome: ClassificationServiceResult, ownerSignal: AbortSignal) => void;
   showError: (
     presentation: ErrorPresentation,
     retry: ((signal?: AbortSignal) => Promise<RetryResult>) | undefined,
@@ -123,6 +122,6 @@ export class ClassificationCommand {
       return;
     }
 
-    this.dependencies.showSuggestions(outcome.noteTitle, outcome.result);
+    this.dependencies.showSuggestions(outcome, this.lifetime.signal);
   }
 }

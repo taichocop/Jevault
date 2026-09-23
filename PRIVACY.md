@@ -1,6 +1,6 @@
 # Privacy
 
-Jevault v0.1 suggests existing Vault folders for the active Markdown note. This document describes the data handling implemented by the plugin.
+Jevault v0.1 suggests existing Vault folders for the active Markdown note and supports explicitly confirmed manual moves. This document describes the data handling implemented by the plugin.
 
 ## Data sent to TypeSafe
 
@@ -24,6 +24,8 @@ Before an explicit classification request, Jevault performs the following operat
 - Looks up the selected API key through Obsidian SecretStorage
 
 Plugin load, Settings display, and Suggestion UI display do not send note data. Jevault does not classify, retry, or upload notes in the background.
+
+Manual candidate selection, confirmation, and move use only local Vault operations. They do not send another TypeSafe request or resend note data. The suggestion application retains the original Vault-relative path and an in-memory file identity for safe validation; the UI receives no note body, API key, or raw provider response. Nothing is persisted for move history. Obsidian may update links locally according to the user’s preferences.
 
 ## No Jevault backend
 

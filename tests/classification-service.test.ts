@@ -1,3 +1,4 @@
+import { fixtureSource } from "./helpers/note-source";
 import { describe, expect, it, vi } from "vitest";
 
 import { CandidateBuilder } from "../src/classification/candidate-builder";
@@ -24,6 +25,7 @@ const settings: JevaultSettings = {
 
 const readyNote: NoteStateResult = {
   status: "ready",
+  source: fixtureSource("programming/aws/S3 Storage Classes.md"),
   note: {
     title: "Amazon S3 Storage Classes",
     path: "programming/aws/S3 Storage Classes.md",
@@ -118,6 +120,7 @@ describe("ClassificationService", () => {
     await expect(service.classifyActiveNote()).resolves.toEqual({
       status: "success",
       noteTitle: "Amazon S3 Storage Classes",
+      source: readyNote.source,
       result: {
         candidates: [
           { path: "programming/aws", probability: 0.85 },
@@ -172,6 +175,7 @@ describe("ClassificationService", () => {
     await expect(service.classifyActiveNote()).resolves.toEqual({
       status: "success",
       noteTitle: "Amazon S3 Storage Classes",
+      source: readyNote.source,
       result: {
         candidates: [{ path: "InboxArchive", probability: 1 }],
       },

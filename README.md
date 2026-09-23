@@ -12,7 +12,7 @@ TypeSafe Jev
 Ranked destination folder suggestions
 ```
 
-Jevault v0.1 is suggestion-only and read-only. It displays candidates for review and does not move, rename, modify, or delete notes or folders.
+Jevault suggests existing destination folders. You can explicitly select a suggestion and confirm a manual move of the classified note. Jevault never moves notes automatically.
 
 ## Requirements
 
@@ -38,9 +38,13 @@ Open **Settings → Community plugins → Jevault**, then configure:
 3. Run **Jevault: Classify current note**.
 4. Wait for classification to finish.
 5. Review the ranked folder suggestions.
-6. Close the modal.
+6. Click a candidate or press its displayed number (`1`–`9`) to select it. Selection alone does not move the note. Candidates beyond the first nine remain clickable.
+7. Review the source note path, destination folder, and resulting target path.
+8. Select **Move** or press **Enter** to confirm. **Cancel**, **Esc**, or closing the modal leaves the note in place before a move starts.
 
-If a retryable error is shown, selecting **Retry** explicitly starts another classification request. In v0.1, candidates are displayed only: selecting a candidate cannot move, rename, or modify a note.
+If a retryable error is shown, selecting **Retry** explicitly starts another classification request. A move uses the exact classified note, even if you switch active notes. A missing, renamed, moved, or replaced source, a missing destination, or an existing target blocks the move. Filename and extension are preserved; Jevault never overwrites or adds a suffix. A note already in the selected folder is reported without moving it.
+
+Manual move is local and sends no additional TypeSafe request. Once the Obsidian move API starts, closing the modal cannot abort it; Jevault reports its result and performs no automatic rollback. Obsidian may update links according to your settings. Jevault does not rewrite note content or frontmatter itself.
 
 ## Privacy and external services
 
@@ -58,14 +62,15 @@ See [PRIVACY.md](PRIVACY.md) for details and the [TypeSafe privacy policy](https
 ## Limitations
 
 - Desktop only
-- Suggestion only; no automatic or manual move action
-- Does not modify notes, folders, frontmatter, tags, or links
+- Manual moves require selection and explicit confirmation; no automatic or bulk moves
+- No filename changes, folder creation, deletion, tag changes, or custom content/frontmatter/link rewriting
+- Obsidian manages standard link updates according to your preferences
 - Can only suggest existing, non-excluded Vault folders
 - Depends on TypeSafe API availability
 
 ## Manual installation
 
-Build the plugin, then copy `manifest.json` and `main.js` into `.obsidian/plugins/jevault/` in a dedicated test vault. Reload Obsidian and enable **Jevault** under Community plugins.
+Build the plugin, then copy `manifest.json`, `main.js`, and `styles.css` into `.obsidian/plugins/jevault/` in a dedicated test vault. Reload Obsidian and enable **Jevault** under Community plugins.
 
 ## Development
 

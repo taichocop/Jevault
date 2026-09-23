@@ -4,6 +4,7 @@ import { CandidateBuilder } from "./classification/candidate-builder";
 import { ClassificationService } from "./classification/classification-service";
 import { TypeSafeAdapter } from "./classification/typesafe-adapter";
 import { NoteService } from "./note-service";
+import { NoteMoveService } from "./note-move-service";
 import { SecretService } from "./secret-service";
 import { loadSettings, type JevaultSettings } from "./settings";
 import { SettingsSaveQueue } from "./settings-save-queue";
@@ -11,7 +12,7 @@ import { JevaultSettingTab } from "./settings-tab";
 import { ClassificationCommand } from "./suggestion/classification-command";
 import { ClassificationErrorModal } from "./suggestion/classification-error-modal";
 import { SuggestionModal } from "./suggestion/suggestion-modal";
-import { createSuggestionViewModel } from "./suggestion/suggestion-view-model";
+import { SuggestionSession } from "./suggestion/suggestion-session";
 import { VaultService } from "./vault-service";
 
 export default class JevaultPlugin extends Plugin {
@@ -37,6 +38,7 @@ export default class JevaultPlugin extends Plugin {
       (apiKey) => new TypeSafeAdapter(apiKey),
       () => this.settings,
     );
+    const noteMoveService = new NoteMoveService(this.app.vault, this.app.fileManager);
     this.classificationCommand = new ClassificationCommand({
       classificationService: this.classificationService,
       getActiveNotePath: () => this.app.workspace.getActiveFile()?.path ?? null,
@@ -44,10 +46,14 @@ export default class JevaultPlugin extends Plugin {
         const notice = new Notice("Jevault is classifying this note...", 0);
         return { hide: () => notice.hide() };
       },
-      showSuggestions: (noteTitle, result) => {
+      showSuggestions: (outcome, ownerSignal) => {
         new SuggestionModal(
           this.app,
-          createSuggestionViewModel(noteTitle, result),
+          new SuggestionSession(outcome, noteMoveService),
+          (message) => {
+            new Notice(message);
+          },
+          ownerSignal,
         ).open();
       },
       showError: (presentation, retry, ownerSignal) => {
