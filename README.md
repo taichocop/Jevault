@@ -33,6 +33,8 @@ Open **Settings → Community plugins → Jevault**, then configure:
 - **Number of suggestions**: Set how many ranked folder suggestions to display.
 - **Ignored folders**: Enter Vault-relative folder paths to exclude, one per line.
 
+Jevault always excludes the Vault's current Obsidian configuration directory and its subfolders from destination suggestions. This system exclusion does not appear in **Ignored folders** for new installs. Existing saved ignored-folder entries remain intact.
+
 ## Usage
 
 1. Open a Markdown note.

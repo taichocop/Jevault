@@ -53,6 +53,7 @@ const syntheticEntries = [
 describe("explicit dynamic classification integration", () => {
   it("classifies a synthetic active note against filtered Test Vault folders", async () => {
     const vaultService = new VaultService({
+      configDir: ".obsidian",
       getAllLoadedFiles: () => syntheticEntries,
     });
     const availablePaths = vaultService.getAvailableFolderPaths(settings);

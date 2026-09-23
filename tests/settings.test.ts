@@ -8,14 +8,15 @@ import {
 } from "../src/settings";
 
 describe("Jevault settings", () => {
-  it("provides the Issue #3 defaults without duplicating Inbox", () => {
+  it("keeps system config exclusion out of fresh editable defaults", () => {
     expect(loadSettings(undefined)).toEqual({
       apiKeySecretName: "",
       inboxPath: "Inbox",
       suggestionCount: 3,
-      ignoredFolders: [".obsidian", ".trash", "Templates", "Attachments"],
+      ignoredFolders: [".trash", "Templates", "Attachments"],
     });
     expect(DEFAULT_SETTINGS.ignoredFolders).not.toContain("Inbox");
+    expect(DEFAULT_SETTINGS.ignoredFolders).not.toContain(".obsidian");
   });
 
   it("fills missing keys in partial saved settings", () => {
@@ -23,7 +24,7 @@ describe("Jevault settings", () => {
       apiKeySecretName: "",
       inboxPath: "00_Inbox",
       suggestionCount: 3,
-      ignoredFolders: [".obsidian", ".trash", "Templates", "Attachments"],
+      ignoredFolders: [".trash", "Templates", "Attachments"],
     });
   });
 
@@ -37,6 +38,13 @@ describe("Jevault settings", () => {
     const savedData: unknown = JSON.parse(JSON.stringify(settings));
 
     expect(loadSettings(savedData)).toEqual(settings);
+  });
+
+  it("preserves a persisted .obsidian ignored entry", () => {
+    expect(loadSettings({ ignoredFolders: [".obsidian", "Projects"] }).ignoredFolders).toEqual([
+      ".obsidian",
+      "Projects",
+    ]);
   });
 
   it("falls back safely when saved values have unexpected types", () => {
