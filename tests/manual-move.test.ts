@@ -139,6 +139,25 @@ describe("suggestion selection and explicit confirmation", () => {
     s.button("Cancel").focus(); s.scope.press("Enter");
     expect(s.renameFile).not.toHaveBeenCalled();
   });
+  it.each(["ctrlKey", "altKey", "metaKey", "shiftKey"] as const)(
+    "rejects %s native keyboard and pointer clicks at the Move boundary", async (modifier) => {
+      const s = setup(); s.modal.open(); s.scope.press("2");
+      const move = s.button("Move");
+      expect(s.session.confirmation?.targetPath).toBe("Projects/ノート.MD");
+      expect(s.dom.ownerDocument.activeElement).toBe(move);
+      // Scopeを迂回するnative keyboard click(detail=0)とmodified pointer clickを再現する。
+      move.click(0, { [modifier]: true });
+      move.click(1, { [modifier]: true });
+      await flush();
+      expect(s.renameFile).not.toHaveBeenCalled();
+      expect(s.session.pending).toBe(false);
+      expect(s.session.closed).toBe(false);
+      expect(s.session.confirmation?.targetPath).toBe("Projects/ノート.MD");
+      expect(s.notify).not.toHaveBeenCalled();
+      move.click(); await flush();
+      expect(s.renameFile).toHaveBeenCalledExactlyOnceWith(s.file, "Projects/ノート.MD");
+    },
+  );
   it("guards repeated clicks/Enter during a pending move", async () => {
     const s = setup(); const pending = deferred<void>(); s.renameFile.mockReturnValue(pending.promise);
     s.modal.open(); s.scope.press("2"); const move = s.button("Move");

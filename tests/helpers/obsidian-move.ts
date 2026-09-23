@@ -26,7 +26,7 @@ export class Element {
   text: string;
   editable = false;
   ownerDocument: { activeElement: Element | null };
-  private handlers = new Map<string, (event: { detail: number }) => void>();
+  private handlers = new Map<string, (event: Partial<MouseEvent> & { detail: number }) => void>();
   constructor(public tag = "div", text = "", doc = { activeElement: null as Element | null }) {
     this.text = text;
     this.ownerDocument = doc;
@@ -37,9 +37,11 @@ export class Element {
     return child;
   }
   empty(): void { this.children = []; this.ownerDocument.activeElement = null; }
-  addEventListener(event: string, handler: (event: { detail: number }) => void): void { this.handlers.set(event, handler); }
+  addEventListener(event: string, handler: (event: Partial<MouseEvent> & { detail: number }) => void): void { this.handlers.set(event, handler); }
   // Deliberately invoke stale/disabled callbacks to verify the application guard too.
-  click(detail = 1): void { this.handlers.get("click")?.({ detail }); }
+  click(detail = 1, modifiers: Partial<Pick<MouseEvent, "altKey" | "ctrlKey" | "metaKey" | "shiftKey">> = {}): void {
+    this.handlers.get("click")?.({ detail, ...modifiers });
+  }
   focus(): void { this.ownerDocument.activeElement = this; }
   closest(): Element | null { return this.editable ? this : null; }
   all(): Element[] { return [this, ...this.children.flatMap((child) => child.all())]; }

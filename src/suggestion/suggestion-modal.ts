@@ -51,7 +51,7 @@ export class SuggestionModal extends Modal {
     this.contentEl.empty();
   }
 
-  private hasModifier(event: KeyboardEvent): boolean {
+  private hasModifier(event: Pick<KeyboardEvent, "altKey" | "ctrlKey" | "metaKey" | "shiftKey">): boolean {
     return event.altKey || event.ctrlKey || event.metaKey || event.shiftKey;
   }
 
@@ -96,6 +96,8 @@ export class SuggestionModal extends Modal {
       this.moveButton = contentEl.createEl("button", { text: "Move", cls: "mod-cta" });
       this.moveButton.disabled = this.session.pending;
       this.moveButton.addEventListener("click", (event) => {
+        // 修飾キー付きnative button activationはScopeを迂回するため、click境界でも拒否する。
+        if (this.hasModifier(event)) return;
         // 候補のdouble-clickが再描画後のMoveへ偶然届いても確認として扱わない。
         if (event.detail <= 1) void this.confirmMove();
       });
