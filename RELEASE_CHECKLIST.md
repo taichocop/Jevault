@@ -9,6 +9,7 @@ Complete this checklist from a clean checkout and use only a dedicated, isolated
 - [ ] `npm run typecheck`
 - [ ] `npm run lint`
 - [ ] `npm run build`
+- [ ] Confirm the production `main.js` passes the full third-party license notice verification (`npm run verify:licenses`); repeat the bundled-dependency license audit after dependency updates.
 
 ## Metadata and documentation
 
