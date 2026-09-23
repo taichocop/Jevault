@@ -109,7 +109,7 @@ describe("ClassificationService", () => {
         path: "InboxArchive",
         description: "Existing vault folder: InboxArchive",
       },
-    ]);
+    ], undefined);
   });
 
   it("forwards dynamic candidates, sorts by probability, and preserves provider confidence", async () => {
@@ -141,7 +141,7 @@ describe("ClassificationService", () => {
         path: "health/fitness",
         description: "Existing vault folder: health/fitness",
       },
-    ]);
+    ], undefined);
   });
 
   it("returns only the configured top candidates after sorting", async () => {

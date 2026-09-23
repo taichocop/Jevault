@@ -3,6 +3,7 @@ import type { SecretService } from "../secret-service";
 import type { JevaultSettings } from "../settings";
 import type { VaultService } from "../vault-service";
 import type { CandidateBuilder } from "./candidate-builder";
+import { throwIfCancelled } from "./classification-cancellation";
 import {
   MissingApiKeyError,
   NoActiveNoteError,
@@ -33,8 +34,13 @@ export class ClassificationService {
     private readonly getSettings: () => JevaultSettings,
   ) {}
 
-  async classifyActiveNote(): Promise<ClassificationServiceResult> {
-    const noteState = await this.noteService.getActiveNoteState();
+  async classifyActiveNote(
+    signal?: AbortSignal,
+  ): Promise<ClassificationServiceResult> {
+    throwIfCancelled(signal);
+    const noteState = await this.noteService.getActiveNoteState(signal);
+    // Vault.read自体は中断できないため、完了後にSecret解決へ進む前にも確認する。
+    throwIfCancelled(signal);
     if (noteState.status === "no-active-file") {
       throw new NoActiveNoteError();
     }
@@ -50,7 +56,9 @@ export class ClassificationService {
       throw new NoCandidatesError();
     }
 
+    throwIfCancelled(signal);
     const apiKey = this.secretService.getApiKey(settings.apiKeySecretName);
+    throwIfCancelled(signal);
     if (apiKey === null || apiKey.trim().length === 0) {
       // blank値でも認証不能な通信へ進まないよう、credential自体は加工せず利用可否だけを判定する。
       throw new MissingApiKeyError();
@@ -62,7 +70,9 @@ export class ClassificationService {
       classifier,
       noteState.note,
       candidates,
+      signal,
     );
+    throwIfCancelled(signal);
 
     return {
       status: "success",

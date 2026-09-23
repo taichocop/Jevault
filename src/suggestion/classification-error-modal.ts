@@ -1,6 +1,7 @@
 import { App, Modal } from "obsidian";
 
-import type { ErrorPresentation } from "./error-presentation";
+import { ClassificationCancelledError } from "../classification/classification-cancellation";
+import { createErrorPresentation, type ErrorPresentation } from "./error-presentation";
 
 export type RetryResult =
   | { status: "success" }
@@ -10,23 +11,36 @@ export type RetryResult =
 /** 安全なerror presentationと明示的Retryだけを扱う、Vault操作を持たないModal。 */
 export class ClassificationErrorModal extends Modal {
   private retryInFlight = false;
-  private closed = false;
+  private lifetime: AbortController | undefined;
+  private readonly closeFromOwner = (): void => this.close();
 
   constructor(
     app: App,
     private presentation: ErrorPresentation,
-    private readonly retry: (() => Promise<RetryResult>) | undefined,
+    private readonly retry:
+      | ((signal?: AbortSignal) => Promise<RetryResult>)
+      | undefined,
+    private readonly ownerSignal?: AbortSignal,
   ) {
     super(app);
   }
 
   onOpen(): void {
-    this.closed = false;
+    // 同じModalを開き直しても、前のRetry完了が新しい表示へ干渉しない。
+    this.lifetime?.abort();
+    this.lifetime = new AbortController();
+    this.retryInFlight = false;
+    if (this.ownerSignal?.aborted) {
+      this.close();
+      return;
+    }
+    this.ownerSignal?.addEventListener("abort", this.closeFromOwner, { once: true });
     this.render();
   }
 
   onClose(): void {
-    this.closed = true;
+    this.lifetime?.abort();
+    this.ownerSignal?.removeEventListener("abort", this.closeFromOwner);
     this.contentEl.empty();
   }
 
@@ -51,15 +65,21 @@ export class ClassificationErrorModal extends Modal {
   }
 
   private async retryClassification(retryButton: HTMLButtonElement): Promise<void> {
-    if (this.retryInFlight || this.retry === undefined) {
+    const lifetime = this.lifetime;
+    if (
+      this.retryInFlight ||
+      this.retry === undefined ||
+      lifetime === undefined ||
+      lifetime.signal.aborted
+    ) {
       return;
     }
 
     this.retryInFlight = true;
     retryButton.disabled = true;
     try {
-      const result = await this.retry();
-      if (this.closed) {
+      const result = await this.retry(lifetime.signal);
+      if (lifetime.signal.aborted) {
         return;
       }
       if (result.status === "success") {
@@ -70,9 +90,14 @@ export class ClassificationErrorModal extends Modal {
         // 最新の失敗へ差し替え、入力側エラーへ変化した場合はRetryを表示しない。
         this.presentation = result.presentation;
       }
+    } catch (error) {
+      if (!lifetime.signal.aborted && !(error instanceof ClassificationCancelledError)) {
+        this.presentation = createErrorPresentation(error);
+      }
     } finally {
-      this.retryInFlight = false;
-      if (!this.closed) {
+      // Close・unload・開き直し後は、古い処理のfinallyでもDOMを書き換えない。
+      if (!lifetime.signal.aborted) {
+        this.retryInFlight = false;
         this.render();
       }
     }

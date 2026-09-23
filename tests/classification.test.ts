@@ -120,7 +120,7 @@ describe("classification spike", () => {
           ),
         },
       },
-    });
+    }, undefined);
   });
 
   it("maps SDK connection failures without exposing the raw message", async () => {

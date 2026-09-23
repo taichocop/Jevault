@@ -5,6 +5,9 @@ import {
   type SystemOneRequest,
   VERSION as TYPE_SAFE_SDK_VERSION,
 } from "@typesafe-ai/sdk";
+import { Buffer } from "buffer";
+import type { IncomingMessage } from "http";
+import { request as httpsRequest } from "https";
 
 import type { NoteState } from "../note-service";
 import type {
@@ -12,6 +15,7 @@ import type {
   ClassificationResult,
 } from "./classification-result";
 import type { Classifier } from "./classifier";
+import { throwIfCancelled } from "./classification-cancellation";
 import {
   InvalidTypeSafeResponseError,
   NetworkError,
@@ -22,10 +26,15 @@ import type { FolderCandidate } from "./folder-candidate";
 export { TYPE_SAFE_SDK_VERSION };
 
 const DESTINATION_QUESTION = "destination";
+const TYPE_SAFE_BASE_URL = "https://api.typesafe.ai";
+const TYPE_SAFE_SYSTEM_ONE_URL = `${TYPE_SAFE_BASE_URL}/v1/systemone`;
 const DESTINATION_INSTRUCTIONS =
   "Which existing vault folder is the most appropriate destination for this note?";
 
-type SystemOneExecutor = (request: SystemOneRequest) => Promise<unknown>;
+type SystemOneExecutor = (
+  request: SystemOneRequest,
+  signal?: AbortSignal,
+) => Promise<unknown>;
 type ProviderFailureKind = "network" | "api";
 type ProviderFailureClassifier = (error: unknown) => ProviderFailureKind;
 
@@ -51,31 +60,49 @@ export class TypeSafeAdapter implements Classifier {
     }
 
     // SecretStorage等をadapterから探索せず、呼び出し元が注入した値だけを利用する。
-    const client = new TypeSafeClient({ apiKey, logLevel: "off" });
-    this.execute = async (request) => client.systemOne(request);
+    const client = new TypeSafeClient({
+      apiKey,
+      // 環境変数による送信先変更を避け、公式endpointだけへ送信する。
+      baseURL: TYPE_SAFE_BASE_URL,
+      // Obsidian rendererでは利用者自身の注入済みkeyを使うため、browser guardを明示的に許可する。
+      dangerouslyAllowBrowser: true,
+      // 再送は利用者のRetry操作だけに限定し、SDKの自動通信を止める。
+      retry: { maxRetries: 0 },
+      logLevel: "off",
+      // rendererのCORS制約を避け、SDKの正式なfetch境界でabort可能なDesktop通信へ置き換える。
+      fetch: desktopTypeSafeFetch,
+    });
+    this.execute = async (request, signal) =>
+      client.systemOne(request, { signal });
   }
 
   async classify(
     note: NoteState,
     candidates: FolderCandidate[],
+    signal?: AbortSignal,
   ): Promise<ClassificationResult> {
+    throwIfCancelled(signal);
     assertValidInputPaths(candidates);
     const criteria = Object.fromEntries(
       candidates.map((candidate) => [candidate.path, candidate.description]),
     );
     let response: unknown;
     try {
-      response = await this.execute({
-        state: {
-          title: note.title,
-          path: note.path,
-          body: note.body,
+      response = await this.execute(
+        {
+          state: {
+            title: note.title,
+            path: note.path,
+            body: note.body,
+          },
+          questions: {
+            [DESTINATION_QUESTION]: choice(DESTINATION_INSTRUCTIONS, criteria),
+          },
         },
-        questions: {
-          [DESTINATION_QUESTION]: choice(DESTINATION_INSTRUCTIONS, criteria),
-        },
-      });
+        signal,
+      );
     } catch (error: unknown) {
+      throwIfCancelled(signal);
       // SDKの詳細やresponse bodyをdomain/UIへ渡さず、通信失敗だけを区別する。
       if (this.classifyProviderFailure(error) === "network") {
         throw new NetworkError();
@@ -83,8 +110,97 @@ export class TypeSafeAdapter implements Classifier {
       throw new TypeSafeApiError();
     }
 
+    throwIfCancelled(signal);
     return mapTypeSafeResponse(response, candidates);
   }
+}
+
+async function desktopTypeSafeFetch(
+  input: string,
+  init?: RequestInit,
+): Promise<Response> {
+  // originだけでなくpathも固定し、SDK変更やredirectで別の送信先へ広がらないようにする。
+  if (
+    input !== TYPE_SAFE_SYSTEM_ONE_URL ||
+    init?.method !== "POST" ||
+    typeof init.body !== "string"
+  ) {
+    throw new Error("Invalid TypeSafe transport request.");
+  }
+  const signal = init.signal ?? undefined;
+  throwIfCancelled(signal);
+  const headers: Record<string, string> = {};
+  new Headers(init.headers).forEach((value, name) => {
+    headers[name] = value;
+  });
+  headers["accept-encoding"] = "identity";
+
+  return new Promise<Response>((resolve, reject) => {
+    let responseStarted = false;
+    const request = httpsRequest(
+      TYPE_SAFE_SYSTEM_ONE_URL,
+      {
+        method: "POST",
+        headers,
+        signal,
+        // ambientなglobal agent/proxy設定やTLS検証無効化を通信境界へ持ち込まない。
+        agent: false,
+        rejectUnauthorized: true,
+      },
+      (response) => {
+        responseStarted = true;
+        void readDesktopResponse(response, signal).then(resolve, reject);
+      },
+    );
+    request.once("error", reject);
+    request.once("upgrade", (_response, socket) => {
+      // 101は通常のresponseを通らないため、接続を破棄して安全に終了する。
+      reject(new Error("Invalid TypeSafe transport response."));
+      socket.destroy();
+    });
+    request.once("close", () => {
+      // response/errorなしの終了でも分類をpendingのまま残さない。
+      if (!responseStarted) {
+        reject(new Error("Invalid TypeSafe transport response."));
+      }
+    });
+    request.end(init.body);
+  });
+}
+
+async function readDesktopResponse(
+  response: IncomingMessage,
+  signal?: AbortSignal,
+): Promise<Response> {
+  const status = response.statusCode;
+  if (status === undefined || status < 200 || status >= 300 && status < 400) {
+    // Node HTTPSはredirectを追従しない。本文を読む前に拒否し、接続も解放する。
+    response.destroy();
+    throw new Error("Invalid TypeSafe transport response.");
+  }
+
+  const chunks: Buffer[] = [];
+  // async iteratorがstream error/途中切断も捕捉し、SDKのtimeout/abortを本文完了まで有効にする。
+  for await (const chunk of response) {
+    throwIfCancelled(signal);
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  throwIfCancelled(signal);
+  if (!response.complete) {
+    throw new Error("Incomplete TypeSafe transport response.");
+  }
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(response.headers)) {
+    if (Array.isArray(value)) {
+      for (const entry of value) headers.append(name, entry);
+    } else if (value !== undefined) {
+      headers.append(name, value);
+    }
+  }
+  return new Response(
+    status === 204 || status === 205 ? null : Buffer.concat(chunks).toString("utf8"),
+    { status, headers },
+  );
 }
 
 /** SDK error classの判定はadapter内へ閉じ、testではprovider非依存の分類関数へ差し替える。 */

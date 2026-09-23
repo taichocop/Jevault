@@ -1,4 +1,5 @@
 import type { NoteState } from "../note-service";
+import { throwIfCancelled } from "./classification-cancellation";
 import type { ClassificationResult } from "./classification-result";
 import type { Classifier } from "./classifier";
 import type { FolderCandidate } from "./folder-candidate";
@@ -8,8 +9,11 @@ export async function classifyAndSort(
   classifier: Classifier,
   note: NoteState,
   candidates: FolderCandidate[],
+  signal?: AbortSignal,
 ): Promise<ClassificationResult> {
-  const result = await classifier.classify(note, candidates);
+  throwIfCancelled(signal);
+  const result = await classifier.classify(note, candidates, signal);
+  throwIfCancelled(signal);
 
   return {
     ...result,
