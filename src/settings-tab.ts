@@ -49,7 +49,9 @@ export class JevaultSettingTab extends PluginSettingTab {
     // SecretComponent は値を露出せず、設定には SecretStorage 上の参照名だけを渡す。
     new SecretComponent(this.app, apiKeySetting.controlEl)
       .setValue(settings.apiKeySecretName)
-      .onChange(async (apiKeySecretName) => {
+      .onChange(async (value) => {
+        // Obsidian の解除操作は型定義と異なり null を返し得るため、設定へ入る前に空文字へ戻す。
+        const apiKeySecretName = typeof value === "string" ? value : "";
         await this.updateSettings({ apiKeySecretName });
       });
 
