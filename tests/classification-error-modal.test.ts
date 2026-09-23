@@ -165,6 +165,43 @@ async function flushCompletion(): Promise<void> {
 }
 
 describe("ClassificationCommand and ClassificationErrorModal lifecycle", () => {
+  it("shows suggestions after an active Retry succeeds", async () => {
+    const { command, classifyActiveNote, pending, showSuggestions, showError, hide, getModal } =
+      createIntegratedCommand();
+    await command.execute();
+    const modal = getModal();
+    button(modal, "Retry").click();
+
+    pending.resolve(successfulClassification);
+    await flushCompletion();
+
+    expect(classifyActiveNote).toHaveBeenCalledTimes(2);
+    expect(showError).toHaveBeenCalledOnce();
+    expect(showSuggestions).toHaveBeenCalledWith(
+      successfulClassification.noteTitle,
+      successfulClassification.result,
+    );
+    expect(hide).toHaveBeenCalledTimes(2);
+    expect((modal.contentEl as unknown as FakeElement).children).toEqual([]);
+  });
+
+  it("does not start duplicate classification from repeated Retry clicks", async () => {
+    const { command, classifyActiveNote, pending, showSuggestions, getModal } =
+      createIntegratedCommand();
+    await command.execute();
+    const retryButton = button(getModal(), "Retry");
+
+    retryButton.click();
+    retryButton.click();
+    expect(retryButton.disabled).toBe(true);
+    expect(classifyActiveNote).toHaveBeenCalledTimes(2);
+
+    pending.resolve(successfulClassification);
+    await flushCompletion();
+    expect(classifyActiveNote).toHaveBeenCalledTimes(2);
+    expect(showSuggestions).toHaveBeenCalledOnce();
+  });
+
   it.each(["close", "unload"] as const)(
     "aborts Retry on %s and suppresses a late success and finally redraw",
     async (action) => {
