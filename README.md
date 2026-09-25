@@ -33,6 +33,8 @@ Open **Settings → Community plugins → Jevault**, then configure:
 - **Number of suggestions**: Set how many ranked folder suggestions to display.
 - **Ignored folders**: Enter Vault-relative folder paths to exclude, one per line.
 
+Jevault always excludes the Vault's current Obsidian configuration directory and its subfolders from destination suggestions. This system exclusion does not appear in **Ignored folders** for new installs. Existing saved ignored-folder entries remain intact.
+
 ## Usage
 
 1. Open a Markdown note.
@@ -72,7 +74,7 @@ See [PRIVACY.md](PRIVACY.md) for details and the [TypeSafe privacy policy](https
 
 ## Manual installation
 
-Build the plugin, then copy `manifest.json`, `main.js`, and `styles.css` into `.obsidian/plugins/jevault/` in a dedicated test vault. Reload Obsidian and enable **Jevault** under Community plugins.
+Build the plugin, then copy `manifest.json`, `main.js`, and `styles.css` into `<current Obsidian config directory>/plugins/jevault/` in a dedicated test vault. The default location is `.obsidian/plugins/jevault/`. Reload Obsidian and enable **Jevault** under Community plugins.
 
 ## Development
 

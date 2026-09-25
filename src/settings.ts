@@ -9,7 +9,7 @@ export const DEFAULT_SETTINGS: JevaultSettings = {
   apiKeySecretName: "",
   inboxPath: "Inbox",
   suggestionCount: 3,
-  ignoredFolders: [".obsidian", ".trash", "Templates", "Attachments"],
+  ignoredFolders: [".trash", "Templates", "Attachments"],
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {

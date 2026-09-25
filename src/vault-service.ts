@@ -29,7 +29,7 @@ function isExcludedPath(
 
 /** Obsidianの読み取りAPIだけを使い、分類先として利用可能なFolder pathを取得する。 */
 export class VaultService {
-  constructor(private readonly vault: Pick<Vault, "getAllLoadedFiles">) {}
+  constructor(private readonly vault: Pick<Vault, "configDir" | "getAllLoadedFiles">) {}
 
   getFolders(): TFolder[] {
     // Fileやnote本文へ触れず、Obsidianがロード済みのTFolderだけを読み取る。
@@ -39,7 +39,12 @@ export class VaultService {
   }
 
   getAvailableFolderPaths(settings: FolderExclusionSettings): string[] {
-    const excludedPaths = [settings.inboxPath, ...settings.ignoredFolders]
+    // configDirはユーザー設定とは独立した必須除外。候補生成より前に毎回Vaultから取得する。
+    const excludedPaths = [
+      this.vault.configDir,
+      settings.inboxPath,
+      ...settings.ignoredFolders,
+    ]
       .map(normalizeVaultPath)
       // 空の除外pathは全Folderへ一致し得るため、比較対象へ含めない。
       .filter((path) => path.length > 0);
