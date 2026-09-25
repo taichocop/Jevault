@@ -1,4 +1,4 @@
-import { TFolder, type Vault } from "obsidian";
+import type { TFolder, Vault } from "obsidian";
 
 import type { JevaultSettings } from "./settings";
 
@@ -29,13 +29,11 @@ function isExcludedPath(
 
 /** Obsidianの読み取りAPIだけを使い、分類先として利用可能なFolder pathを取得する。 */
 export class VaultService {
-  constructor(private readonly vault: Pick<Vault, "configDir" | "getAllLoadedFiles">) {}
+  constructor(private readonly vault: Pick<Vault, "configDir" | "getAllFolders">) {}
 
   getFolders(): TFolder[] {
-    // Fileやnote本文へ触れず、Obsidianがロード済みのTFolderだけを読み取る。
-    return this.vault
-      .getAllLoadedFiles()
-      .filter((file): file is TFolder => file instanceof TFolder);
+    // rootは分類先ではないため、ObsidianのAPI段階で候補から外す。
+    return this.vault.getAllFolders(false);
   }
 
   getAvailableFolderPaths(settings: FolderExclusionSettings): string[] {
