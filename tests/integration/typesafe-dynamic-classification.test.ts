@@ -1,20 +1,14 @@
 import { fixtureSource } from "../helpers/note-source";
 import { describe, expect, it, vi } from "vitest";
-import type { TAbstractFile } from "obsidian";
+import type { TFolder } from "obsidian";
 
-const { MockTFile, MockTFolder } = vi.hoisted(() => {
-  class MockTFile {
-    constructor(readonly path: string) {}
-  }
-
+const { MockTFolder } = vi.hoisted(() => {
   class MockTFolder {
     constructor(readonly path: string) {}
   }
 
-  return { MockTFile, MockTFolder };
+  return { MockTFolder };
 });
-
-vi.mock("obsidian", () => ({ TFolder: MockTFolder }));
 
 import { CandidateBuilder } from "../../src/classification/candidate-builder";
 import { ClassificationService } from "../../src/classification/classification-service";
@@ -37,9 +31,8 @@ const settings: JevaultSettings = {
   suggestionCount: 3,
 };
 
-const syntheticEntries = [
+const syntheticFolders = [
   new MockTFolder("Inbox"),
-  new MockTFile("Inbox/test-s3.md"),
   new MockTFolder("programming"),
   new MockTFolder("programming/aws"),
   new MockTFolder("programming/ruby"),
@@ -48,13 +41,13 @@ const syntheticEntries = [
   new MockTFolder("Templates"),
   new MockTFolder("Attachments"),
   new MockTFolder("InboxArchive"),
-] as unknown as TAbstractFile[];
+] as unknown as TFolder[];
 
 describe("explicit dynamic classification integration", () => {
   it("classifies a synthetic active note against filtered Test Vault folders", async () => {
     const vaultService = new VaultService({
       configDir: ".obsidian",
-      getAllLoadedFiles: () => syntheticEntries,
+      getAllFolders: () => syntheticFolders,
     });
     const availablePaths = vaultService.getAvailableFolderPaths(settings);
     const service = new ClassificationService(

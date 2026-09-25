@@ -1,23 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { TAbstractFile } from "obsidian";
+import type { TFolder } from "obsidian";
 
 import { CandidateBuilder } from "../src/classification/candidate-builder";
 import { ClassificationService } from "../src/classification/classification-service";
 import { fixtureSource } from "./helpers/note-source";
 
-const { MockTFile, MockTFolder } = vi.hoisted(() => {
-  class MockTFile {
-    constructor(readonly path: string) {}
-  }
-
+const { MockTFolder } = vi.hoisted(() => {
   class MockTFolder {
     constructor(readonly path: string) {}
   }
 
-  return { MockTFile, MockTFolder };
+  return { MockTFolder };
 });
-
-vi.mock("obsidian", () => ({ TFolder: MockTFolder }));
 
 import { DEFAULT_SETTINGS } from "../src/settings";
 import {
@@ -25,18 +19,14 @@ import {
   VaultService,
 } from "../src/vault-service";
 
-type MockEntry =
-  | InstanceType<typeof MockTFile>
-  | InstanceType<typeof MockTFolder>;
-
-function asObsidianEntries(entries: MockEntry[]): TAbstractFile[] {
-  return entries as unknown as TAbstractFile[];
+function asObsidianFolders(folders: InstanceType<typeof MockTFolder>[]): TFolder[] {
+  return folders as unknown as TFolder[];
 }
 
-function createService(entries: MockEntry[], configDir = ".obsidian"): VaultService {
+function createService(folders: InstanceType<typeof MockTFolder>[], configDir = ".obsidian"): VaultService {
   return new VaultService({
     configDir,
-    getAllLoadedFiles: vi.fn(() => asObsidianEntries(entries)),
+    getAllFolders: vi.fn(() => asObsidianFolders(folders)),
   });
 }
 
@@ -45,18 +35,30 @@ describe("VaultService", () => {
     vi.clearAllMocks();
   });
 
-  it("uses loaded Vault entries and returns only TFolder instances", () => {
+  it("uses the folder-only Vault boundary", () => {
     const folders = [
       new MockTFolder("programming"),
       new MockTFolder("programming/aws"),
     ];
-    const getAllLoadedFiles = vi.fn(() =>
-      asObsidianEntries([new MockTFile("Inbox/note.md"), ...folders]),
-    );
-    const service = new VaultService({ configDir: ".obsidian", getAllLoadedFiles });
+    const getAllFolders = vi.fn(() => asObsidianFolders(folders));
+    const service = new VaultService({ configDir: ".obsidian", getAllFolders });
 
     expect(service.getFolders()).toEqual(folders);
-    expect(getAllLoadedFiles).toHaveBeenCalledOnce();
+    expect(getAllFolders).toHaveBeenCalledWith(false);
+  });
+
+  it("excludes the root folder at the Vault API boundary", () => {
+    const root = new MockTFolder("/");
+    const projects = new MockTFolder("Projects");
+    const getAllFolders = vi.fn((includeRoot = false) =>
+      asObsidianFolders(includeRoot ? [root, projects] : [projects]),
+    );
+    const service = new VaultService({ configDir: ".obsidian", getAllFolders });
+
+    expect(service.getAvailableFolderPaths({ inboxPath: "", ignoredFolders: [] })).toEqual([
+      "Projects",
+    ]);
+    expect(getAllFolders).toHaveBeenCalledWith(false);
   });
 
   it("keeps distinct nested Vault-relative paths", () => {
@@ -102,10 +104,18 @@ describe("VaultService", () => {
     ]);
   });
 
-  it("keeps the actual config directory out of classifier input and suggestions", async () => {
+  it("passes only eligible folder paths to classification", async () => {
     const vaultService = createService([
+      new MockTFolder(".obsidian"),
       new MockTFolder(".obsidian-custom"),
       new MockTFolder(".obsidian-custom/plugins"),
+      new MockTFolder("Inbox"),
+      new MockTFolder("Inbox/Child"),
+      new MockTFolder("InboxArchive"),
+      new MockTFolder("Templates"),
+      new MockTFolder("Programming"),
+      new MockTFolder("Programming/AWS"),
+      new MockTFolder("健康/運動"),
       new MockTFolder("Projects"),
     ], ".obsidian-custom");
     const classify = vi.fn(async () => ({
@@ -124,13 +134,17 @@ describe("VaultService", () => {
       () => ({
         ...DEFAULT_SETTINGS,
         apiKeySecretName: "fixture-secret",
-        ignoredFolders: [],
+        ignoredFolders: [".obsidian", "Templates"],
       }),
     );
 
     const outcome = await service.classifyActiveNote();
 
     expect(classify).toHaveBeenCalledWith(expect.anything(), [
+      { path: "InboxArchive", description: "Existing vault folder: InboxArchive" },
+      { path: "Programming", description: "Existing vault folder: Programming" },
+      { path: "Programming/AWS", description: "Existing vault folder: Programming/AWS" },
+      { path: "健康/運動", description: "Existing vault folder: 健康/運動" },
       { path: "Projects", description: "Existing vault folder: Projects" },
     ], undefined);
     expect(outcome.result.candidates.map((candidate) => candidate.path)).toEqual([
